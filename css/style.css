@@ -499,19 +499,34 @@ input[type="range"] {
   font-size: 13px;
 }
 
+.api-alert {
+  margin: 8px 12px 0;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e1e1e1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  color: #555;
+  font-size: 13px;
+}
+
 .proactive-banner.hidden,
+.api-alert.hidden,
 .hidden {
   display: none !important;
 }
 
-.proactive-banner button {
+.proactive-banner button,
+.api-alert button {
   margin-left: auto;
   border: 0;
-  border-radius: 999px;
-  background: #111;
-  color: #fff;
+  background: transparent;
+  color: var(--wechat-green-dark);
   font-size: 12px;
-  padding: 5px 10px;
+  padding: 4px 0 4px 8px;
+  white-space: nowrap;
 }
 
 .messages {

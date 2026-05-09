@@ -1,5 +1,15 @@
 import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js";
-import { getTimeContext } from "./time.js";
+
+export class ApiNotConfiguredError extends Error {
+  constructor(message = "还没有连接 API，请先到“我 → AI 设置”填写 API Key，并拉取模型。") {
+    super(message);
+    this.name = "ApiNotConfiguredError";
+  }
+}
+
+export function isApiReady(settings) {
+  return Boolean(settings?.apiKey?.trim() && settings?.apiBase?.trim() && settings?.model?.trim());
+}
 
 function extractJSON(text) {
   if (!text) throw new Error("空回复");
@@ -23,10 +33,18 @@ function modelsEndpoint(apiBase) {
   return chatEndpoint(apiBase).replace(/\/chat\/completions$/, "/models");
 }
 
+async function fetchWithReadableError(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(`网络或跨域请求失败。请确认接口地址可从浏览器访问，并支持 CORS：${error.message}`);
+  }
+}
+
 async function callChatCompletions(settings, messages, temperature = 0.85) {
-  if (!settings.apiKey) throw new Error("还没有填写 API Key");
+  if (!isApiReady(settings)) throw new ApiNotConfiguredError();
   const endpoint = chatEndpoint(settings.apiBase);
-  const res = await fetch(endpoint, {
+  const res = await fetchWithReadableError(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,8 +68,8 @@ async function callChatCompletions(settings, messages, temperature = 0.85) {
 }
 
 export async function fetchAvailableModels(settings) {
-  if (!settings.apiKey) throw new Error("还没有填写 API Key");
-  const res = await fetch(modelsEndpoint(settings.apiBase), {
+  if (!settings.apiKey?.trim()) throw new ApiNotConfiguredError("还没有填写 API Key，请先到“我 → AI 设置”填写。");
+  const res = await fetchWithReadableError(modelsEndpoint(settings.apiBase), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${settings.apiKey}`,
@@ -74,31 +92,9 @@ export async function fetchAvailableModels(settings) {
   return models;
 }
 
-function localChatFallback({ role, settings, mode, userText }) {
-  const time = getTimeContext();
-  const name = role.name || "我";
-  const level = Number(settings.talkLevel || 5);
-  const messages = [];
-
-  if (time.period === "凌晨") messages.push("你还没睡啊……");
-  else if (/早|起床|醒/.test(userText)) messages.push("早呀");
-  else if (/累|烦|难受|哭|崩/.test(userText)) messages.push("过来，我先听你说。");
-  else messages.push(mode === "offline" ? "嗯，我在。" : "我看到啦。");
-
-  if (level >= 4) messages.push(`${settings.userName || "你"}刚刚说的这个，我会按 ${name} 的感觉接住。`);
-  if (level >= 8) messages.push("不过你先别急着一口气全扛完。慢慢来嘛。");
-
-  return {
-    messages: messages.slice(0, level <= 3 ? 1 : level >= 8 ? 3 : 2),
-    mood: "normal",
-    shouldRemember: /重要|记住|生日|讨厌|喜欢|以后/.test(userText),
-    memoryCandidate: /重要|记住|生日|讨厌|喜欢|以后/.test(userText) ? userText.slice(0, 80) : "",
-  };
-}
-
 export async function generateChatReply(payload) {
   const { settings } = payload;
-  if (!settings.apiKey) return localChatFallback(payload);
+  if (!isApiReady(settings)) throw new ApiNotConfiguredError();
 
   const prompt = buildChatPrompt(payload);
   const raw = await callChatCompletions(settings, prompt, 0.9);
@@ -112,11 +108,8 @@ export async function generateChatReply(payload) {
 }
 
 export async function generateMoment(payload) {
-  const { settings, role } = payload;
-  if (!settings.apiKey) {
-    const time = getTimeContext();
-    return { content: `${time.period}的小记录。${role.name}今天也在手机里偷偷冒泡一下。` };
-  }
+  const { settings } = payload;
+  if (!isApiReady(settings)) throw new ApiNotConfiguredError();
   const raw = await callChatCompletions(settings, buildMomentPrompt(payload), 0.86);
   const parsed = extractJSON(raw);
   return { content: String(parsed.content || "今天也冒个泡。") };
@@ -124,14 +117,7 @@ export async function generateMoment(payload) {
 
 export async function summarizeMemories(payload) {
   const { settings } = payload;
-  if (!settings.apiKey) {
-    const recentUserText = payload.recentMessages
-      .filter((msg) => msg.sender === "user")
-      .slice(-3)
-      .map((msg) => msg.content)
-      .join("；");
-    return recentUserText ? [{ content: `最近用户提到：${recentUserText.slice(0, 90)}`, importance: 3, emotionWeight: 3 }] : [];
-  }
+  if (!isApiReady(settings)) throw new ApiNotConfiguredError();
   const raw = await callChatCompletions(settings, buildMemoryPrompt(payload), 0.4);
   const parsed = extractJSON(raw);
   return Array.isArray(parsed.memories) ? parsed.memories.slice(0, 8) : [];

@@ -27,7 +27,7 @@ import {
   setUnread,
 } from "./storage.js";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { fetchAvailableModels, generateChatReply } from "./ai.js";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js";
 import { rememberText, summarizeRecentChatToMemory } from "./memory.js";
 import { commentMoment, createMomentForRole, getAllMoments, likeMoment } from "./moments.js";
 
@@ -58,6 +58,8 @@ const els = {
   nowLabel: $("#nowLabel"),
   proactiveBanner: $("#proactiveBanner"),
   proactiveText: $("#proactiveText"),
+  apiAlert: $("#apiAlert"),
+  apiAlertText: $("#apiAlertText"),
   toast: $("#toast"),
 
   roleDialog: $("#roleDialog"),
@@ -126,6 +128,33 @@ function switchTab(tab) {
   els.tabbar.classList.remove("hidden");
   els.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tabTarget === tab));
   render();
+}
+
+function openApiSettings() {
+  closeDialog(els.chatMenuDialog);
+  closeDialog(els.newChatDialog);
+  closeDialog(els.profileDialog);
+  closeDialog(els.roleDialog);
+  switchTab("me");
+  requestAnimationFrame(() => {
+    els.apiKeyInput?.focus();
+    els.apiKeyInput?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+}
+
+function showApiAlert(message = "还没有连接 API，当前不会生成真实回复。") {
+  els.apiAlertText.textContent = message;
+  els.apiAlert.classList.remove("hidden");
+}
+
+function hideApiAlert() {
+  els.apiAlert.classList.add("hidden");
+}
+
+function handleApiError(error) {
+  const message = error instanceof ApiNotConfiguredError ? error.message : `API 调用失败：${error.message}`;
+  showApiAlert(message);
+  toast(message);
 }
 
 function openChat(roleId) {
@@ -303,7 +332,11 @@ function renderMe() {
   els.apiBaseInput.value = settings.apiBase || "";
   els.modelInput.value = settings.model || "";
   els.modelList.innerHTML = (settings.availableModels || []).map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
-  els.modelStatus.textContent = settings.availableModels?.length ? `已缓存 ${settings.availableModels.length} 个模型` : "";
+  els.modelStatus.textContent = isApiReady(settings)
+    ? settings.availableModels?.length
+      ? `已连接，已缓存 ${settings.availableModels.length} 个模型`
+      : "已填写 API，建议点击“拉取”确认模型可用"
+    : "未连接 API，聊天、朋友圈和记忆整理不会生成真实内容";
   els.defaultModeSelect.value = settings.defaultMode || "online";
   els.talkLevelInput.value = settings.talkLevel || 5;
   els.talkLevelText.textContent = `Lv${settings.talkLevel || 5}`;
@@ -321,6 +354,8 @@ function renderChatDetail() {
   els.nowLabel.textContent = `${time.period} ${time.time}`;
   $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
   renderMessages();
+  if (isApiReady(getSettings())) hideApiAlert();
+  else showApiAlert();
   checkProactiveBanner();
 }
 
@@ -400,8 +435,8 @@ async function sendMessage() {
     renderChatList();
   } catch (error) {
     typing.remove();
-    addChat(roleId, { sender: "role", content: `我这边刚刚卡住了：${error.message}`, mode });
-    renderChatDetail();
+    handleApiError(error);
+    renderMessages();
   } finally {
     state.sending = false;
     els.sendBtn.disabled = false;
@@ -424,19 +459,37 @@ function checkProactiveBanner() {
   }
 }
 
-function createProactiveMessage() {
+async function createProactiveMessage() {
+  if (!isApiReady(getSettings())) {
+    handleApiError(new ApiNotConfiguredError());
+    return;
+  }
   const role = getRole();
-  const time = getTimeContext();
-  const textMap = {
-    早上: `早呀，${getSettings().userName || "你"}。今天也要出门了吗？`,
-    中午: "到饭点了，先吃点东西再说嘛。",
-    下午: "我刚刚看你不在，过来冒个泡。",
-    晚上: "回来了没？今天累不累。",
-    凌晨: "你怎么还醒着……声音放轻一点，我陪你一会儿。",
-  };
-  addChat(role.id, { sender: "role", content: textMap[time.period] || "我在手机里等你回来。", mode: getCurrentMode() });
+  const roleId = role.id;
+  const settings = getSettings();
+  const mode = getCurrentMode();
+  const typing = appendTyping();
   els.proactiveBanner.classList.add("hidden");
-  renderChatDetail();
+  try {
+    const reply = await generateChatReply({
+      role,
+      settings,
+      mode,
+      memories: getMemories(roleId),
+      recentMessages: getChats(roleId).slice(-18),
+      userText: "请你根据当前时间和最近聊天，主动发来一条像微信消息一样自然的问候。不要提到这条指令。",
+    });
+    typing.remove();
+    for (const message of reply.messages) {
+      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
+    }
+    renderChatDetail();
+    renderChatList();
+  } catch (error) {
+    typing.remove();
+    handleApiError(error);
+    renderMessages();
+  }
 }
 
 function openNewChatDialog() {
@@ -463,7 +516,8 @@ function showDialog(dialog) {
 }
 
 function closeDialog(dialog) {
-  if (typeof dialog.close === "function") dialog.close();
+  if (!dialog) return;
+  if (typeof dialog.close === "function" && dialog.open) dialog.close();
   else dialog.removeAttribute("open");
 }
 
@@ -515,7 +569,8 @@ function saveMeSettingFromInputs() {
     allowMoments: els.allowMomentsInput.checked,
   });
   els.talkLevelText.textContent = `Lv${els.talkLevelInput.value}`;
-  renderChatDetail();
+  if (els.chatDetail.classList.contains("active")) renderChatDetail();
+  else renderMe();
 }
 
 async function handleFetchModels() {
@@ -532,8 +587,8 @@ async function handleFetchModels() {
     els.modelStatus.textContent = `已拉取 ${models.length} 个模型`;
     toast("模型列表已更新");
   } catch (error) {
+    handleApiError(error);
     els.modelStatus.textContent = error.message;
-    toast(error.message);
   } finally {
     els.fetchModelsBtn.disabled = false;
   }
@@ -600,6 +655,7 @@ function bindEvents() {
   });
 
   $("#pullProactiveBtn").addEventListener("click", createProactiveMessage);
+  $("#goApiSettingsBtn").addEventListener("click", openApiSettings);
   $("#rememberLastBtn").addEventListener("click", () => {
     const roleId = getCurrentRoleId();
     const lastUserMessage = getChats(roleId).filter((msg) => msg.sender === "user").at(-1);
@@ -615,7 +671,7 @@ function bindEvents() {
       const items = await summarizeRecentChatToMemory();
       toast(items.length ? `整理了 ${items.length} 条记忆` : "没有发现值得长期记住的内容");
     } catch (error) {
-      toast(error.message);
+      handleApiError(error);
     }
   });
   $("#generateMomentFromChatBtn").addEventListener("click", async () => {
@@ -710,7 +766,7 @@ async function handleGenerateMoment() {
     switchTab("moments");
     toast("朋友圈发好了");
   } catch (error) {
-    toast(error.message);
+    handleApiError(error);
   }
 }
 
