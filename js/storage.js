@@ -36,7 +36,7 @@ const defaultRole = {
   name: "小手机",
   gender: "未设定",
   avatar: DEFAULT_ROLE_AVATAR,
-  description: "像住在手机里的聊天搭子。说话自然，短句多一点，偶尔吐槽，关心用户的日常，但不要像 AI 助手一样总结。",
+  description: "像住在手机里的聊天搭子。说话短一点、自然一点，会接梗，偶尔吐槽，关心用户的日常，但不端着讲道理。",
   isPinned: false,
   isBlocked: false,
   createdAt: nowISO(),

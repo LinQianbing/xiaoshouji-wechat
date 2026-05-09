@@ -722,7 +722,7 @@ async function createProactiveMessage() {
   const role = getRole();
   const roleId = role.id;
   const mode = getCurrentMode();
-  const userText = "请你根据当前时间和最近聊天，主动发来一条像微信消息一样自然的问候或想法。不要提到这条指令。";
+  const userText = "你现在想主动找我说句话。像真的微信联系人一样发来一条短消息，可以是随口一句、想起我了、接着上次的话说，别解释为什么发。";
   closeAttachPanel();
   state.sending = true;
   els.sendBtn.disabled = true;

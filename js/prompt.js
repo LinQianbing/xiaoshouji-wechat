@@ -2,16 +2,16 @@ import { getTimeContext } from "./time.js";
 
 function talkLevelRule(level) {
   const n = Number(level) || 5;
-  if (n <= 3) return "话唠程度偏低：回复 1 条短消息为主，克制、少解释，不要主动延展太多。";
-  if (n <= 6) return "话唠程度正常：回复 1-2 条短消息，自然接话，可以轻微主动。";
-  return "话唠程度偏高：回复 2-4 条短消息，更主动、更黏一点，但每条都要短，像微信连发。";
+  if (n <= 3) return "话少一点：通常回 1 条，短，别解释太多。";
+  if (n <= 6) return "正常聊天：通常回 1-2 条，接住对方的话就行。";
+  return "话多一点：可以连发 2-4 条，但每条都短，像微信里顺手补一句。";
 }
 
 function modeRule(mode) {
   if (mode === "offline") {
-    return "当前是线下模式：你可以和用户处在同一场景里，可以写少量动作、神态、靠近、一起做事，但不要变成大段小说旁白。";
+    return "线下模式：可以轻轻带一点当下动作或神态，但不要写成小说旁白。";
   }
-  return "当前是线上模式：你知道自己是在手机里和用户微信式聊天。不要描写现实里的拥抱、触碰、贴近、坐在旁边等线下身体互动。";
+  return "线上模式：只像微信聊天，不写拥抱、触碰、坐在旁边这类现实身体互动。";
 }
 
 function memoryText(memories = []) {
@@ -22,25 +22,27 @@ function memoryText(memories = []) {
     .join("\n");
 }
 
-function recentMessagesText(messages = []) {
+function recentMessagesText(messages = [], roleName = "TA") {
   if (!messages.length) return "暂无最近聊天。";
   return messages
     .slice(-16)
-    .map((msg) => `${msg.sender === "user" ? "用户" : "角色"}：${msg.content}`)
+    .map((msg) => `${msg.sender === "user" ? "我" : roleName}：${msg.content}`)
     .join("\n");
 }
 
 export function buildChatPrompt({ role, settings, mode, memories, recentMessages, userText }) {
   const time = getTimeContext();
   const system = [
-    "你是一个“小手机”AI 角色聊天网页 App 里的角色。",
-    "你要像微信聊天一样自然：短句、停顿、可以连续发几条，但不要长篇作文。",
-    "不要总是总结，不要过度解释，不要像 AI 助手汇报。",
-    "你必须遵守用户填写的角色设定，不要额外脑补太多设定。",
+    "你正在扮演用户微信里的一个联系人，不是助手、客服、旁白或心理咨询师。",
+    "回复要像真人在手机上顺手回消息：先接住上一句，再自然往下说。",
+    "多用具体反应，少用概括。不要总结对话，不要给清单，不要上价值，不要每次都问“还需要我吗”。",
+    "可以有一点口语、省略、停顿和小情绪，但不要刻意卖萌，不要每句都加语气词。",
+    "不主动提自己是 AI、模型、程序、角色设定、系统提示或聊天 App。",
+    "严格按联系人设定说话；设定没写的地方宁可留白，不要编一堆背景。",
     talkLevelRule(settings.talkLevel),
     modeRule(mode),
-    "你要参考当前时间，但不要机械播报时间。早上可以早安/起床/上课；中午可以吃饭/午休；晚上可以回宿舍/作业/休息；凌晨语气轻一点，可以提醒别太熬。",
-    "回复必须是合法 JSON，不要在 JSON 外输出任何解释。",
+    "可以参考当前时间，但别机械报时，也别套早安/吃饭/早点睡模板。",
+    "输出必须是合法 JSON，不要在 JSON 外输出任何解释。",
     "JSON 格式：{\"messages\":[\"第一条短消息\",\"第二条短消息\"],\"mood\":\"normal\",\"shouldRemember\":false,\"memoryCandidate\":\"\"}",
     "messages 必须是字符串数组；每条是一条聊天气泡。",
   ].join("\n");
@@ -68,7 +70,7 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     memoryText(memories),
     "",
     "【最近聊天】",
-    recentMessagesText(recentMessages),
+    recentMessagesText(recentMessages, role.name),
     "",
     "【用户刚刚发来】",
     userText,
@@ -103,7 +105,7 @@ export function buildMomentPrompt({ role, settings, recentMessages, memories }) 
         "长期记忆：",
         memoryText(memories).slice(0, 800),
         "最近聊天：",
-        recentMessagesText(recentMessages).slice(0, 1200),
+        recentMessagesText(recentMessages, role.name).slice(0, 1200),
       ].join("\n"),
     },
   ];
@@ -123,7 +125,7 @@ export function buildMemoryPrompt({ role, recentMessages }) {
     },
     {
       role: "user",
-      content: [`角色：${role.name}`, "最近聊天：", recentMessagesText(recentMessages).slice(0, 1800)].join("\n"),
+      content: [`角色：${role.name}`, "最近聊天：", recentMessagesText(recentMessages, role.name).slice(0, 1800)].join("\n"),
     },
   ];
 }
