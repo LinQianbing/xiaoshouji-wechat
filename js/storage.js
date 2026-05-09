@@ -176,6 +176,9 @@ export function addChat(roleId, message) {
     fileName: message.fileName || "",
     fileSize: Number(message.fileSize || 0),
     dataUrl: message.dataUrl || "",
+    replyGroupId: message.replyGroupId || "",
+    replyToMessageId: message.replyToMessageId || "",
+    replyPrompt: message.replyPrompt || "",
     mode: message.mode || getCurrentMode(),
     createdAt: message.createdAt || nowISO(),
   };

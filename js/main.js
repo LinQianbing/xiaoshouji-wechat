@@ -43,6 +43,8 @@ const state = {
   startChatAfterSave: false,
   sending: false,
   installPromptEvent: null,
+  longPressTimer: null,
+  messageActionMenu: null,
 };
 
 const els = {
@@ -178,6 +180,11 @@ function closeAttachPanel() {
 function toggleAttachPanel() {
   els.attachPanel.classList.toggle("hidden");
   els.inputPlusBtn.classList.toggle("active", !els.attachPanel.classList.contains("hidden"));
+}
+
+function closeMessageActionMenu() {
+  state.messageActionMenu?.remove();
+  state.messageActionMenu = null;
 }
 
 function switchTab(tab) {
@@ -520,7 +527,7 @@ function renderMessages() {
       const avatar = isUser ? settings.userAvatar || DEFAULT_USER_AVATAR : role.avatar || DEFAULT_ROLE_AVATAR;
       return `
         ${divider}
-        <div class="message-row ${isUser ? "user" : "role"}">
+        <div class="message-row ${isUser ? "user" : "role"}" data-message-id="${msg.id}">
           <img class="message-avatar" src="${avatar}" alt="头像">
           <div class="bubble">${renderMessageContent(msg)}</div>
         </div>
@@ -531,6 +538,7 @@ function renderMessages() {
   requestAnimationFrame(() => {
     els.messageList.scrollTop = els.messageList.scrollHeight;
   });
+  bindMessageLongPress();
 }
 
 function appendTyping() {
@@ -542,9 +550,97 @@ function appendTyping() {
   return typing;
 }
 
+function buildRegenerationPlan(messages, messageId) {
+  const selectedIndex = messages.findIndex((msg) => msg.id === messageId);
+  if (selectedIndex < 0) return null;
+  const selected = messages[selectedIndex];
+  if (selected.sender !== "role") return null;
+
+  if (selected.replyGroupId) {
+    const groupIndexes = messages
+      .map((msg, index) => (msg.replyGroupId === selected.replyGroupId ? index : -1))
+      .filter((index) => index >= 0);
+    const firstGroupIndex = Math.min(...groupIndexes);
+    const lastGroupIndex = Math.max(...groupIndexes);
+    if (lastGroupIndex !== messages.length - 1) return null;
+
+    const keptMessages = messages.slice(0, firstGroupIndex);
+    const replyTo = selected.replyToMessageId ? messages.find((msg) => msg.id === selected.replyToMessageId) : null;
+    return {
+      keptMessages,
+      userText: selected.replyPrompt || replyTo?.content || "接着上一句自然回我。",
+      mode: selected.mode || replyTo?.mode || getCurrentMode(),
+      recentMessages: keptMessages.slice(-18),
+    };
+  }
+
+  let userIndex = selectedIndex - 1;
+  while (userIndex >= 0 && messages[userIndex].sender !== "user") userIndex -= 1;
+  if (userIndex < 0) return null;
+
+  const nextUserIndex = messages.findIndex((msg, index) => index > userIndex && msg.sender === "user");
+  if (nextUserIndex !== -1) return null;
+
+  const keptMessages = messages.slice(0, userIndex + 1);
+  return {
+    keptMessages,
+    userText: messages[userIndex].content,
+    mode: messages[userIndex].mode || getCurrentMode(),
+    recentMessages: keptMessages.slice(-18),
+  };
+}
+
+function openMessageActionMenu(target, messageId) {
+  const roleId = getCurrentRoleId();
+  const messages = getChats(roleId);
+  const turn = buildRegenerationPlan(messages, messageId);
+  if (!turn) return;
+
+  closeMessageActionMenu();
+  const rect = target.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.className = "message-action-menu";
+  menu.innerHTML = `<button type="button">重新生成</button>`;
+  document.body.appendChild(menu);
+
+  const left = Math.min(window.innerWidth - 118, Math.max(12, rect.left + rect.width / 2 - 52));
+  const top = Math.max(12, rect.top - 46);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelector("button").addEventListener("click", () => regenerateReplyTurn(messageId));
+  state.messageActionMenu = menu;
+}
+
+function clearLongPressTimer() {
+  clearTimeout(state.longPressTimer);
+  state.longPressTimer = null;
+}
+
+function bindMessageLongPress() {
+  $$(".message-row.role .bubble").forEach((bubble) => {
+    const row = bubble.closest(".message-row");
+    const messageId = row?.dataset.messageId;
+    if (!messageId) return;
+
+    bubble.addEventListener("pointerdown", () => {
+      clearLongPressTimer();
+      state.longPressTimer = setTimeout(() => openMessageActionMenu(bubble, messageId), 560);
+    });
+    bubble.addEventListener("pointerup", clearLongPressTimer);
+    bubble.addEventListener("pointerleave", clearLongPressTimer);
+    bubble.addEventListener("pointercancel", clearLongPressTimer);
+    bubble.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openMessageActionMenu(bubble, messageId);
+    });
+  });
+}
+
 async function appendModelReply({ role, roleId, settings, mode, userText, recentMessages }) {
   const typing = appendTyping();
   try {
+    const replyGroupId = createId("reply");
+    const replyToMessageId = [...recentMessages].reverse().find((msg) => msg.sender === "user")?.id || "";
     const reply = await generateChatReply({
       role,
       settings,
@@ -555,7 +651,14 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
     });
     typing.remove();
     for (const message of reply.messages) {
-      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
+      addChat(roleId, {
+        sender: "role",
+        content: String(message).trim(),
+        mode,
+        replyGroupId,
+        replyToMessageId,
+        replyPrompt: userText,
+      });
     }
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
@@ -642,22 +745,36 @@ async function sendLocalAttachment(file, type) {
 
 async function regenerateLastReply() {
   if (state.sending) return;
-  const role = getRole();
-  const roleId = role.id;
+  const roleId = getCurrentRoleId();
   const messages = getChats(roleId);
-  const userIndex = [...messages].map((msg, index) => ({ msg, index })).reverse().find((item) => item.msg.sender === "user")?.index;
-  if (userIndex === undefined) {
+  const lastRoleMessage = [...messages].reverse().find((msg) => msg.sender === "role");
+  if (!lastRoleMessage) {
     toast("还没有可重生成的消息");
     closeAttachPanel();
     return;
   }
+  await regenerateReplyTurn(lastRoleMessage.id);
+}
 
-  const keptMessages = messages.slice(0, userIndex + 1);
-  const lastUserMessage = keptMessages[userIndex];
+async function regenerateReplyTurn(messageId) {
+  if (state.sending) return;
+  const role = getRole();
+  const roleId = role.id;
+  const messages = getChats(roleId);
+  const plan = buildRegenerationPlan(messages, messageId);
+  if (!plan) {
+    toast("只能重生成最后一轮回复");
+    closeAttachPanel();
+    closeMessageActionMenu();
+    return;
+  }
+
+  const keptMessages = plan.keptMessages;
   const removedCount = messages.length - keptMessages.length;
   if (!removedCount) {
     toast("先等模型回复后再重生成");
     closeAttachPanel();
+    closeMessageActionMenu();
     return;
   }
 
@@ -665,10 +782,12 @@ async function regenerateLastReply() {
   if (!isApiReady(settings)) {
     handleApiError(new ApiNotConfiguredError());
     closeAttachPanel();
+    closeMessageActionMenu();
     return;
   }
-  const mode = lastUserMessage.mode || getCurrentMode();
+  const mode = plan.mode || getCurrentMode();
   closeAttachPanel();
+  closeMessageActionMenu();
   state.sending = true;
   els.sendBtn.disabled = true;
   setChats(roleId, keptMessages);
@@ -680,8 +799,8 @@ async function regenerateLastReply() {
       roleId,
       settings,
       mode,
-      recentMessages: keptMessages.slice(-18),
-      userText: lastUserMessage.content,
+      recentMessages: plan.recentMessages,
+      userText: plan.userText,
     });
     if (!ok) {
       setChats(roleId, messages);
@@ -909,6 +1028,10 @@ function maybeGenerateOfflineUnread() {
 }
 
 function bindEvents() {
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".message-row .bubble")) return;
+    if (!event.target.closest(".message-action-menu")) closeMessageActionMenu();
+  });
   els.tabs.forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tabTarget)));
   $("#backToChatsBtn").addEventListener("click", closeChat);
   $("#topNewChatBtn").addEventListener("click", openNewChatDialog);
