@@ -42,6 +42,7 @@ const state = {
   profileRoleId: null,
   startChatAfterSave: false,
   sending: false,
+  installPromptEvent: null,
 };
 
 const els = {
@@ -116,6 +117,7 @@ const els = {
   allowProactiveInput: $("#allowProactiveInput"),
   allowMemoryInput: $("#allowMemoryInput"),
   allowMomentsInput: $("#allowMomentsInput"),
+  installPwaBtn: $("#installPwaBtn"),
 };
 
 function toast(message) {
@@ -826,6 +828,35 @@ function saveMeSettingFromInputs() {
   else renderMe();
 }
 
+function isStandaloneMode() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone;
+}
+
+function installHelpMessage() {
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const isWechat = /MicroMessenger/i.test(ua);
+  if (isWechat) return "请点右上角菜单，用 Safari 或 Chrome 打开这个网页，再安装到桌面。微信内置浏览器不能直接安装 PWA。";
+  if (isIOS) return "iPhone 需要用 Safari 打开网页，点底部分享按钮，然后选择“添加到主屏幕”。";
+  return "请用 Chrome 或 Edge 打开网页，点浏览器菜单里的“安装应用”或“添加到主屏幕”。";
+}
+
+async function handleInstallPwa() {
+  if (isStandaloneMode()) {
+    toast("已经是桌面 App 模式");
+    return;
+  }
+  if (state.installPromptEvent) {
+    const event = state.installPromptEvent;
+    state.installPromptEvent = null;
+    await event.prompt();
+    const choice = await event.userChoice;
+    toast(choice.outcome === "accepted" ? "已开始安装" : "已取消安装");
+    return;
+  }
+  alert(installHelpMessage());
+}
+
 async function handleFetchModels() {
   saveMeSettingFromInputs();
   const settings = getSettings();
@@ -1032,6 +1063,7 @@ function bindEvents() {
 
   $("#exportDataBtn").addEventListener("click", downloadJSON);
   $("#exportTopBtn").addEventListener("click", downloadJSON);
+  els.installPwaBtn.addEventListener("click", handleInstallPwa);
   $("#importDataInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (file) await importJSON(file);
@@ -1068,6 +1100,10 @@ function tickClock() {
 
 function bootstrap() {
   initStore();
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.installPromptEvent = event;
+  });
   maybeGenerateOfflineUnread();
   bindEvents();
   render();
