@@ -171,7 +171,11 @@ export function addChat(roleId, message) {
   const normalized = {
     id: message.id || uid("msg"),
     sender: message.sender,
-    content: message.content,
+    type: message.type || "text",
+    content: message.content || "",
+    fileName: message.fileName || "",
+    fileSize: Number(message.fileSize || 0),
+    dataUrl: message.dataUrl || "",
     mode: message.mode || getCurrentMode(),
     createdAt: message.createdAt || nowISO(),
   };

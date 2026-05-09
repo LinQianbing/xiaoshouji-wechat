@@ -1,10 +1,11 @@
 {
+  "id": "./",
   "name": "小手机",
   "short_name": "小手机",
   "description": "微信风格的小手机聊天网页 App",
   "lang": "zh-CN",
-  "start_url": ".",
-  "scope": ".",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ededed",

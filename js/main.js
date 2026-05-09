@@ -23,13 +23,14 @@ import {
   saveSettings,
   setCurrentMode,
   setCurrentRoleId,
+  setChats,
   setLastOpenAt,
   setMemories,
   setUnread,
 } from "./storage.js";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
 import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js";
-import { rememberText, summarizeRecentChatToMemory } from "./memory.js";
+import { summarizeRecentChatToMemory } from "./memory.js";
 import { commentMoment, createMomentForRole, getAllMoments, likeMoment } from "./moments.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -63,6 +64,14 @@ const els = {
   proactiveText: $("#proactiveText"),
   apiAlert: $("#apiAlert"),
   apiAlertText: $("#apiAlertText"),
+  attachPanel: $("#attachPanel"),
+  inputPlusBtn: $("#inputPlusBtn"),
+  imageAttachInput: $("#imageAttachInput"),
+  fileAttachInput: $("#fileAttachInput"),
+  attachImageBtn: $("#attachImageBtn"),
+  attachFileBtn: $("#attachFileBtn"),
+  regenerateBtn: $("#regenerateBtn"),
+  proactiveTalkBtn: $("#proactiveTalkBtn"),
   toast: $("#toast"),
 
   roleDialog: $("#roleDialog"),
@@ -127,6 +136,46 @@ function readFileAsDataURL(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function formatFileSize(bytes = 0) {
+  if (!bytes) return "未知大小";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderMessageContent(msg) {
+  if (msg.type === "image" && msg.dataUrl) {
+    return `
+      <div class="image-message">
+        <img src="${msg.dataUrl}" alt="${escapeHTML(msg.fileName || "图片")}">
+        ${msg.fileName ? `<span>${escapeHTML(msg.fileName)}</span>` : ""}
+      </div>
+    `;
+  }
+  if (msg.type === "file") {
+    return `
+      <div class="file-message">
+        <span class="file-glyph" aria-hidden="true"></span>
+        <span>
+          <b>${escapeHTML(msg.fileName || "文件")}</b>
+          <small>${formatFileSize(msg.fileSize)}</small>
+        </span>
+      </div>
+    `;
+  }
+  return escapeHTML(msg.content);
+}
+
+function closeAttachPanel() {
+  els.attachPanel.classList.add("hidden");
+  els.inputPlusBtn.classList.remove("active");
+}
+
+function toggleAttachPanel() {
+  els.attachPanel.classList.toggle("hidden");
+  els.inputPlusBtn.classList.toggle("active", !els.attachPanel.classList.contains("hidden"));
 }
 
 function switchTab(tab) {
@@ -471,7 +520,7 @@ function renderMessages() {
         ${divider}
         <div class="message-row ${isUser ? "user" : "role"}">
           <img class="message-avatar" src="${avatar}" alt="头像">
-          <div class="bubble">${escapeHTML(msg.content)}</div>
+          <div class="bubble">${renderMessageContent(msg)}</div>
         </div>
       `;
     })
@@ -491,6 +540,35 @@ function appendTyping() {
   return typing;
 }
 
+async function appendModelReply({ role, roleId, settings, mode, userText, recentMessages }) {
+  const typing = appendTyping();
+  try {
+    const reply = await generateChatReply({
+      role,
+      settings,
+      mode,
+      memories: getMemories(roleId),
+      recentMessages,
+      userText,
+    });
+    typing.remove();
+    for (const message of reply.messages) {
+      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
+    }
+    if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
+      addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
+    }
+    renderChatDetail();
+    renderChatList();
+    return true;
+  } catch (error) {
+    typing.remove();
+    handleApiError(error);
+    renderMessages();
+    return false;
+  }
+}
+
 async function sendMessage() {
   const text = els.messageInput.value.trim();
   if (!text || state.sending) return;
@@ -505,29 +583,108 @@ async function sendMessage() {
   addChat(roleId, { sender: "user", content: text, mode });
   renderMessages();
 
-  const typing = appendTyping();
   try {
-    const reply = await generateChatReply({
+    await appendModelReply({
       role,
+      roleId,
       settings,
       mode,
-      memories: getMemories(roleId),
       recentMessages: getChats(roleId).slice(-18),
       userText: text,
     });
-    typing.remove();
-    for (const message of reply.messages) {
-      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
+  } finally {
+    state.sending = false;
+    els.sendBtn.disabled = false;
+  }
+}
+
+async function sendLocalAttachment(file, type) {
+  if (!file || state.sending) return;
+  const role = getRole();
+  const roleId = role.id;
+  const settings = getSettings();
+  const mode = getCurrentMode();
+  const isImage = type === "image";
+  const content = isImage ? `[图片] ${file.name || "未命名图片"}` : `[文件] ${file.name || "未命名文件"}`;
+  const dataUrl = isImage ? await readFileAsDataURL(file) : "";
+
+  closeAttachPanel();
+  state.sending = true;
+  els.sendBtn.disabled = true;
+  addChat(roleId, {
+    sender: "user",
+    type,
+    content,
+    fileName: file.name,
+    fileSize: file.size,
+    dataUrl,
+    mode,
+  });
+  renderMessages();
+  renderChatList();
+
+  try {
+    await appendModelReply({
+      role,
+      roleId,
+      settings,
+      mode,
+      recentMessages: getChats(roleId).slice(-18),
+      userText: content,
+    });
+  } finally {
+    state.sending = false;
+    els.sendBtn.disabled = false;
+  }
+}
+
+async function regenerateLastReply() {
+  if (state.sending) return;
+  const role = getRole();
+  const roleId = role.id;
+  const messages = getChats(roleId);
+  const userIndex = [...messages].map((msg, index) => ({ msg, index })).reverse().find((item) => item.msg.sender === "user")?.index;
+  if (userIndex === undefined) {
+    toast("还没有可重生成的消息");
+    closeAttachPanel();
+    return;
+  }
+
+  const keptMessages = messages.slice(0, userIndex + 1);
+  const lastUserMessage = keptMessages[userIndex];
+  const removedCount = messages.length - keptMessages.length;
+  if (!removedCount) {
+    toast("先等模型回复后再重生成");
+    closeAttachPanel();
+    return;
+  }
+
+  const settings = getSettings();
+  if (!isApiReady(settings)) {
+    handleApiError(new ApiNotConfiguredError());
+    closeAttachPanel();
+    return;
+  }
+  const mode = lastUserMessage.mode || getCurrentMode();
+  closeAttachPanel();
+  state.sending = true;
+  els.sendBtn.disabled = true;
+  setChats(roleId, keptMessages);
+  renderMessages();
+
+  try {
+    const ok = await appendModelReply({
+      role,
+      roleId,
+      settings,
+      mode,
+      recentMessages: keptMessages.slice(-18),
+      userText: lastUserMessage.content,
+    });
+    if (!ok) {
+      setChats(roleId, messages);
+      renderMessages();
     }
-    if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
-      addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
-    }
-    renderChatDetail();
-    renderChatList();
-  } catch (error) {
-    typing.remove();
-    handleApiError(error);
-    renderMessages();
   } finally {
     state.sending = false;
     els.sendBtn.disabled = false;
@@ -551,35 +708,37 @@ function checkProactiveBanner() {
 }
 
 async function createProactiveMessage() {
-  if (!isApiReady(getSettings())) {
+  const settings = getSettings();
+  if (!settings.allowProactiveMessage) {
+    toast("先在“我”里打开允许主动消息");
+    closeAttachPanel();
+    return;
+  }
+  if (state.sending) return;
+  if (!isApiReady(settings)) {
     handleApiError(new ApiNotConfiguredError());
     return;
   }
   const role = getRole();
   const roleId = role.id;
-  const settings = getSettings();
   const mode = getCurrentMode();
-  const typing = appendTyping();
+  const userText = "请你根据当前时间和最近聊天，主动发来一条像微信消息一样自然的问候或想法。不要提到这条指令。";
+  closeAttachPanel();
+  state.sending = true;
+  els.sendBtn.disabled = true;
   els.proactiveBanner.classList.add("hidden");
   try {
-    const reply = await generateChatReply({
+    await appendModelReply({
       role,
       settings,
       mode,
-      memories: getMemories(roleId),
+      roleId,
       recentMessages: getChats(roleId).slice(-18),
-      userText: "请你根据当前时间和最近聊天，主动发来一条像微信消息一样自然的问候。不要提到这条指令。",
+      userText,
     });
-    typing.remove();
-    for (const message of reply.messages) {
-      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
-    }
-    renderChatDetail();
-    renderChatList();
-  } catch (error) {
-    typing.remove();
-    handleApiError(error);
-    renderMessages();
+  } finally {
+    state.sending = false;
+    els.sendBtn.disabled = false;
   }
 }
 
@@ -750,12 +909,20 @@ function bindEvents() {
 
   $("#pullProactiveBtn").addEventListener("click", createProactiveMessage);
   $("#goApiSettingsBtn").addEventListener("click", openApiSettings);
-  $("#rememberLastBtn").addEventListener("click", () => {
-    const roleId = getCurrentRoleId();
-    const lastUserMessage = getChats(roleId).filter((msg) => msg.sender === "user").at(-1);
-    if (!lastUserMessage) return toast("还没有可记住的用户消息");
-    rememberText(roleId, lastUserMessage.content, 4, 4);
-    toast("已记住这件事");
+  els.inputPlusBtn.addEventListener("click", toggleAttachPanel);
+  els.attachImageBtn.addEventListener("click", () => els.imageAttachInput.click());
+  els.attachFileBtn.addEventListener("click", () => els.fileAttachInput.click());
+  els.regenerateBtn.addEventListener("click", regenerateLastReply);
+  els.proactiveTalkBtn.addEventListener("click", createProactiveMessage);
+  els.imageAttachInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await sendLocalAttachment(file, "image");
+  });
+  els.fileAttachInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await sendLocalAttachment(file, "file");
   });
 
   $("#openChatMenuBtn").addEventListener("click", openChatInfo);
