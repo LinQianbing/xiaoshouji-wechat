@@ -1,12 +1,12 @@
-const CACHE_NAME = "xiaoshouji-pwa-v3";
+const CACHE_NAME = "xiaoshouji-pwa-v4";
 
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./manifest.webmanifest",
-  "./css/style.css",
+  "./manifest.webmanifest?v=4",
+  "./css/style.css?v=4",
   "./js/ai.js",
-  "./js/main.js",
+  "./js/main.js?v=4",
   "./js/memory.js",
   "./js/moments.js",
   "./js/prompt.js",
@@ -41,6 +41,20 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request).catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  const url = new URL(event.request.url);
+  if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css") || url.pathname.endsWith(".webmanifest")) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
