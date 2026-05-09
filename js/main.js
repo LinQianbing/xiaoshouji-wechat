@@ -1,0 +1,734 @@
+import {
+  DEFAULT_ROLE_AVATAR,
+  DEFAULT_USER_AVATAR,
+  addChat,
+  addMemory,
+  clearChats,
+  clearMemories,
+  createId,
+  deleteRole,
+  exportAllData,
+  getChats,
+  getCurrentMode,
+  getCurrentRoleId,
+  getLastOpenAt,
+  getMemories,
+  getRole,
+  getRoles,
+  getSettings,
+  getUnread,
+  importAllData,
+  initStore,
+  saveRole,
+  saveSettings,
+  setCurrentMode,
+  setCurrentRoleId,
+  setLastOpenAt,
+  setUnread,
+} from "./storage.js";
+import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
+import { fetchAvailableModels, generateChatReply } from "./ai.js";
+import { rememberText, summarizeRecentChatToMemory } from "./memory.js";
+import { commentMoment, createMomentForRole, getAllMoments, likeMoment } from "./moments.js";
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+const state = {
+  activeTab: "chats",
+  editingRoleId: null,
+  profileRoleId: null,
+  startChatAfterSave: false,
+  sending: false,
+};
+
+const els = {
+  tabbar: $("#tabbar"),
+  tabs: $$(".tab"),
+  screens: $$(".screen[data-tab]"),
+  chatDetail: $("#screen-chat-detail"),
+  chatList: $("#chatList"),
+  contactList: $("#contactList"),
+  momentsList: $("#momentsList"),
+  messageList: $("#messageList"),
+  messageInput: $("#messageInput"),
+  sendBtn: $("#sendBtn"),
+  chatTitle: $("#chatTitle"),
+  chatSubtitle: $("#chatSubtitle"),
+  nowLabel: $("#nowLabel"),
+  proactiveBanner: $("#proactiveBanner"),
+  proactiveText: $("#proactiveText"),
+  toast: $("#toast"),
+
+  roleDialog: $("#roleDialog"),
+  roleForm: $("#roleForm"),
+  roleDialogTitle: $("#roleDialogTitle"),
+  roleNameInput: $("#roleNameInput"),
+  roleGenderInput: $("#roleGenderInput"),
+  roleDescInput: $("#roleDescInput"),
+  roleAvatarInput: $("#roleAvatarInput"),
+  roleAvatarPreview: $("#roleAvatarPreview"),
+  deleteRoleBtn: $("#deleteRoleBtn"),
+
+  profileDialog: $("#profileDialog"),
+  profileAvatar: $("#profileAvatar"),
+  profileName: $("#profileName"),
+  profileMeta: $("#profileMeta"),
+  profileDesc: $("#profileDesc"),
+
+  chatMenuDialog: $("#chatMenuDialog"),
+  newChatDialog: $("#newChatDialog"),
+  newChatList: $("#newChatList"),
+
+  meAvatar: $("#meAvatar"),
+  momentsUserAvatar: $("#momentsUserAvatar"),
+  momentsHeroName: $("#momentsHeroName"),
+  userAvatarInput: $("#userAvatarInput"),
+  userNameInput: $("#userNameInput"),
+  apiKeyInput: $("#apiKeyInput"),
+  apiBaseInput: $("#apiBaseInput"),
+  modelInput: $("#modelInput"),
+  modelList: $("#modelList"),
+  modelStatus: $("#modelStatus"),
+  fetchModelsBtn: $("#fetchModelsBtn"),
+  defaultModeSelect: $("#defaultModeSelect"),
+  talkLevelInput: $("#talkLevelInput"),
+  talkLevelText: $("#talkLevelText"),
+  allowProactiveInput: $("#allowProactiveInput"),
+  allowMemoryInput: $("#allowMemoryInput"),
+  allowMomentsInput: $("#allowMomentsInput"),
+};
+
+function toast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => els.toast.classList.remove("show"), 1800);
+}
+
+function escapeHTML(value = "") {
+  return String(value).replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" })[ch]);
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function switchTab(tab) {
+  state.activeTab = tab;
+  els.screens.forEach((screen) => screen.classList.toggle("active", screen.dataset.tab === tab));
+  els.chatDetail.classList.remove("active");
+  els.tabbar.classList.remove("hidden");
+  els.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tabTarget === tab));
+  render();
+}
+
+function openChat(roleId) {
+  setCurrentRoleId(roleId);
+  setUnread(roleId, 0);
+  els.screens.forEach((screen) => screen.classList.remove("active"));
+  els.chatDetail.classList.add("active");
+  els.tabbar.classList.add("hidden");
+  renderChatDetail();
+}
+
+function closeChat() {
+  els.chatDetail.classList.remove("active");
+  els.tabbar.classList.remove("hidden");
+  switchTab("chats");
+}
+
+function render() {
+  renderChatList();
+  renderContacts();
+  renderMoments();
+  renderMe();
+  renderNewChatList();
+}
+
+function latestPreview(roleId) {
+  const messages = getChats(roleId);
+  const last = messages[messages.length - 1];
+  if (!last) return { text: "还没有聊天，点开说第一句话吧", time: "" };
+  return {
+    text: `${last.sender === "user" ? "我：" : ""}${last.content}`,
+    time: formatChatTime(last.createdAt),
+  };
+}
+
+function renderChatList() {
+  const roles = getRoles();
+  const unread = getUnread();
+  const query = $("#chatSearch")?.value?.trim()?.toLowerCase() || "";
+  const conversations = roles.filter((role) => getChats(role.id).length || unread[role.id]);
+  const source = query ? roles : conversations;
+  const filtered = source.filter((role) => `${role.name} ${role.description} ${latestPreview(role.id).text}`.toLowerCase().includes(query));
+  if (!filtered.length) {
+    const message = query ? "没有找到相关联系人或聊天记录。" : "暂无聊天。";
+    els.chatList.innerHTML = `<div class="empty-state">${message}<br><button id="emptyAddRoleBtn" type="button">发起聊天</button></div>`;
+    $("#emptyAddRoleBtn")?.addEventListener("click", openNewChatDialog);
+    return;
+  }
+
+  els.chatList.innerHTML = filtered
+    .map((role) => {
+      const preview = latestPreview(role.id);
+      const count = unread[role.id] || 0;
+      return `
+        <article class="chat-cell" data-role-id="${role.id}">
+          <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
+          <div class="cell-main">
+            <div class="cell-title-line">
+              <strong>${escapeHTML(role.name)}</strong>
+              <time>${escapeHTML(preview.time)}</time>
+            </div>
+            <p class="cell-subtitle">${escapeHTML(preview.text)}</p>
+          </div>
+          <span class="unread-dot ${count ? "show" : ""}">${count}</span>
+        </article>
+      `;
+    })
+    .join("");
+
+  $$(".chat-cell").forEach((cell) => cell.addEventListener("click", () => openChat(cell.dataset.roleId)));
+}
+
+function renderNewChatList() {
+  if (!els.newChatList) return;
+  const roles = getRoles();
+  els.newChatList.innerHTML = roles.length
+    ? roles
+        .map(
+          (role) => `
+        <button class="new-chat-cell" data-role-id="${role.id}" type="button">
+          <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
+          <span>${escapeHTML(role.name)}</span>
+        </button>
+      `,
+        )
+        .join("")
+    : `<div class="empty-state">还没有联系人。<br><button id="newChatCreateBtn" type="button">添加联系人</button></div>`;
+
+  $$(".new-chat-cell").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      closeDialog(els.newChatDialog);
+      openChat(cell.dataset.roleId);
+    });
+  });
+  $("#newChatCreateBtn")?.addEventListener("click", () => {
+    closeDialog(els.newChatDialog);
+    openRoleDialog(null, { startChatAfterSave: true });
+  });
+}
+
+function renderContacts() {
+  const roles = getRoles();
+  els.contactList.innerHTML = roles
+    .map(
+      (role) => `
+      <article class="contact-cell" data-role-id="${role.id}">
+        <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
+        <div class="cell-main">
+          <strong>${escapeHTML(role.name)}</strong><br>
+          <small>${escapeHTML(role.gender || "未设定")}</small>
+        </div>
+        <small>›</small>
+      </article>
+    `,
+    )
+    .join("");
+  $$(".contact-cell").forEach((cell) => cell.addEventListener("click", () => openProfile(cell.dataset.roleId)));
+}
+
+function renderMoments() {
+  const settings = getSettings();
+  els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
+  els.momentsHeroName.textContent = `${settings.userName || "我"}的小手机`;
+  const moments = getAllMoments();
+  if (!moments.length) {
+    els.momentsList.innerHTML = `<div class="empty-state">朋友圈还空着。<br>点右上角相机，让当前联系人发一条动态。</div>`;
+    return;
+  }
+  els.momentsList.innerHTML = moments
+    .map((item) => {
+      const comments = item.comments || [];
+      return `
+        <article class="moment-card" data-role-id="${item.role.id}" data-moment-id="${item.id}">
+          <img class="moment-avatar" src="${item.role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(item.role.name)}头像">
+          <div>
+            <p class="moment-name">${escapeHTML(item.role.name)}</p>
+            <div class="moment-text">${escapeHTML(item.content)}</div>
+            <div class="moment-foot">
+              <time>${formatMomentTime(item.createdAt)}</time>
+              <button class="like-moment" type="button">赞 ${item.likes || ""}</button>
+              <button class="comment-moment" type="button">评论</button>
+            </div>
+            ${comments.length ? `<div class="comment-box">${comments.map((comment) => `<p><b>${escapeHTML(comment.userName)}：</b>${escapeHTML(comment.text)}</p>`).join("")}</div>` : ""}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  $$(".like-moment").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const card = btn.closest(".moment-card");
+      likeMoment(card.dataset.roleId, card.dataset.momentId);
+      renderMoments();
+    });
+  });
+
+  $$(".comment-moment").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const card = btn.closest(".moment-card");
+      const text = prompt("评论内容");
+      if (text) {
+        commentMoment(card.dataset.roleId, card.dataset.momentId, text, getSettings().userName || "我");
+        renderMoments();
+      }
+    });
+  });
+}
+
+function renderMe() {
+  const settings = getSettings();
+  els.meAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
+  els.userNameInput.value = settings.userName || "";
+  els.apiKeyInput.value = settings.apiKey || "";
+  els.apiBaseInput.value = settings.apiBase || "";
+  els.modelInput.value = settings.model || "";
+  els.modelList.innerHTML = (settings.availableModels || []).map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
+  els.modelStatus.textContent = settings.availableModels?.length ? `已缓存 ${settings.availableModels.length} 个模型` : "";
+  els.defaultModeSelect.value = settings.defaultMode || "online";
+  els.talkLevelInput.value = settings.talkLevel || 5;
+  els.talkLevelText.textContent = `Lv${settings.talkLevel || 5}`;
+  els.allowProactiveInput.checked = Boolean(settings.allowProactiveMessage);
+  els.allowMemoryInput.checked = Boolean(settings.allowMemory);
+  els.allowMomentsInput.checked = Boolean(settings.allowMoments);
+}
+
+function renderChatDetail() {
+  const role = getRole();
+  const mode = getCurrentMode();
+  const time = getTimeContext();
+  els.chatTitle.textContent = role.name;
+  els.chatSubtitle.textContent = `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
+  els.nowLabel.textContent = `${time.period} ${time.time}`;
+  $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
+  renderMessages();
+  checkProactiveBanner();
+}
+
+function renderMessages() {
+  const role = getRole();
+  const settings = getSettings();
+  const messages = getChats(role.id);
+  if (!messages.length) {
+    els.messageList.innerHTML = `<div class="empty-state">你和 ${escapeHTML(role.name)} 还没有聊天。<br>像微信一样，直接发第一句就行。</div>`;
+    return;
+  }
+
+  let lastDivider = "";
+  els.messageList.innerHTML = messages
+    .map((msg) => {
+      const time = formatChatTime(msg.createdAt);
+      const divider = time !== lastDivider ? `<div class="time-divider">${time}</div>` : "";
+      lastDivider = time;
+      const isUser = msg.sender === "user";
+      const avatar = isUser ? settings.userAvatar || DEFAULT_USER_AVATAR : role.avatar || DEFAULT_ROLE_AVATAR;
+      return `
+        ${divider}
+        <div class="message-row ${isUser ? "user" : "role"}">
+          <img class="message-avatar" src="${avatar}" alt="头像">
+          <div class="bubble">${escapeHTML(msg.content)}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  requestAnimationFrame(() => {
+    els.messageList.scrollTop = els.messageList.scrollHeight;
+  });
+}
+
+function appendTyping() {
+  const typing = document.createElement("div");
+  typing.className = "message-row role typing";
+  typing.innerHTML = `<img class="message-avatar" src="${getRole().avatar || DEFAULT_ROLE_AVATAR}" alt="头像"><div class="bubble">正在输入…</div>`;
+  els.messageList.appendChild(typing);
+  els.messageList.scrollTop = els.messageList.scrollHeight;
+  return typing;
+}
+
+async function sendMessage() {
+  const text = els.messageInput.value.trim();
+  if (!text || state.sending) return;
+  const role = getRole();
+  const roleId = role.id;
+  const settings = getSettings();
+  const mode = getCurrentMode();
+  state.sending = true;
+  els.sendBtn.disabled = true;
+  els.messageInput.value = "";
+  autoResizeInput();
+  addChat(roleId, { sender: "user", content: text, mode });
+  renderMessages();
+
+  const typing = appendTyping();
+  try {
+    const reply = await generateChatReply({
+      role,
+      settings,
+      mode,
+      memories: getMemories(roleId),
+      recentMessages: getChats(roleId).slice(-18),
+      userText: text,
+    });
+    typing.remove();
+    for (const message of reply.messages) {
+      addChat(roleId, { sender: "role", content: String(message).trim(), mode });
+    }
+    if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
+      addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
+    }
+    renderChatDetail();
+    renderChatList();
+  } catch (error) {
+    typing.remove();
+    addChat(roleId, { sender: "role", content: `我这边刚刚卡住了：${error.message}`, mode });
+    renderChatDetail();
+  } finally {
+    state.sending = false;
+    els.sendBtn.disabled = false;
+  }
+}
+
+function checkProactiveBanner() {
+  const settings = getSettings();
+  const lastOpenAt = getLastOpenAt();
+  if (!settings.allowProactiveMessage || !lastOpenAt) {
+    els.proactiveBanner.classList.add("hidden");
+    return;
+  }
+  const diff = Date.now() - new Date(lastOpenAt).getTime();
+  if (diff > 1000 * 60 * 60 * 2) {
+    els.proactiveText.textContent = `${getRole().name}：${getAwayLabel(lastOpenAt)}了，要不要看看 TA 说什么？`;
+    els.proactiveBanner.classList.remove("hidden");
+  } else {
+    els.proactiveBanner.classList.add("hidden");
+  }
+}
+
+function createProactiveMessage() {
+  const role = getRole();
+  const time = getTimeContext();
+  const textMap = {
+    早上: `早呀，${getSettings().userName || "你"}。今天也要出门了吗？`,
+    中午: "到饭点了，先吃点东西再说嘛。",
+    下午: "我刚刚看你不在，过来冒个泡。",
+    晚上: "回来了没？今天累不累。",
+    凌晨: "你怎么还醒着……声音放轻一点，我陪你一会儿。",
+  };
+  addChat(role.id, { sender: "role", content: textMap[time.period] || "我在手机里等你回来。", mode: getCurrentMode() });
+  els.proactiveBanner.classList.add("hidden");
+  renderChatDetail();
+}
+
+function openNewChatDialog() {
+  renderNewChatList();
+  showDialog(els.newChatDialog);
+}
+
+function openRoleDialog(roleId = null, options = {}) {
+  state.editingRoleId = roleId;
+  state.startChatAfterSave = Boolean(options.startChatAfterSave);
+  const role = roleId ? getRole(roleId) : null;
+  els.roleDialogTitle.textContent = role ? "编辑资料" : "添加联系人";
+  els.roleNameInput.value = role?.name || "";
+  els.roleGenderInput.value = role?.gender || "未设定";
+  els.roleDescInput.value = role?.description || "";
+  els.roleAvatarPreview.src = role?.avatar || DEFAULT_ROLE_AVATAR;
+  els.deleteRoleBtn.classList.toggle("hidden", !role);
+  showDialog(els.roleDialog);
+}
+
+function showDialog(dialog) {
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
+function closeDialog(dialog) {
+  if (typeof dialog.close === "function") dialog.close();
+  else dialog.removeAttribute("open");
+}
+
+function saveRoleFromForm(event) {
+  event.preventDefault();
+  const existing = state.editingRoleId ? getRole(state.editingRoleId) : null;
+  const role = saveRole({
+    id: existing?.id || createId("role"),
+    name: els.roleNameInput.value,
+    gender: els.roleGenderInput.value,
+    avatar: els.roleAvatarPreview.src || DEFAULT_ROLE_AVATAR,
+    description: els.roleDescInput.value,
+    createdAt: existing?.createdAt,
+  });
+  setCurrentRoleId(role.id);
+  closeDialog(els.roleDialog);
+  const shouldOpenChat = state.startChatAfterSave && !existing;
+  state.startChatAfterSave = false;
+  render();
+  toast(existing ? "资料已保存" : "联系人已添加");
+  if (shouldOpenChat) openChat(role.id);
+}
+
+function openProfile(roleId) {
+  const role = getRole(roleId);
+  state.profileRoleId = roleId;
+  els.profileAvatar.src = role.avatar || DEFAULT_ROLE_AVATAR;
+  els.profileName.textContent = role.name;
+  els.profileMeta.textContent = `性别：${role.gender || "未设定"}`;
+  els.profileDesc.textContent = role.description || "这个联系人还没有详细资料。";
+  showDialog(els.profileDialog);
+}
+
+function autoResizeInput() {
+  els.messageInput.style.height = "auto";
+  els.messageInput.style.height = `${Math.min(110, els.messageInput.scrollHeight)}px`;
+}
+
+function saveMeSettingFromInputs() {
+  saveSettings({
+    userName: els.userNameInput.value.trim() || "我",
+    apiKey: els.apiKeyInput.value.trim(),
+    apiBase: els.apiBaseInput.value.trim() || "https://api.openai.com/v1/chat/completions",
+    model: els.modelInput.value.trim() || "gpt-4o-mini",
+    defaultMode: els.defaultModeSelect.value,
+    talkLevel: Number(els.talkLevelInput.value),
+    allowProactiveMessage: els.allowProactiveInput.checked,
+    allowMemory: els.allowMemoryInput.checked,
+    allowMoments: els.allowMomentsInput.checked,
+  });
+  els.talkLevelText.textContent = `Lv${els.talkLevelInput.value}`;
+  renderChatDetail();
+}
+
+async function handleFetchModels() {
+  saveMeSettingFromInputs();
+  const settings = getSettings();
+  els.fetchModelsBtn.disabled = true;
+  els.modelStatus.textContent = "正在拉取模型列表...";
+  try {
+    const models = await fetchAvailableModels(settings);
+    const nextModel = settings.model && models.includes(settings.model) ? settings.model : models[0];
+    saveSettings({ availableModels: models, model: nextModel });
+    els.modelInput.value = nextModel;
+    renderMe();
+    els.modelStatus.textContent = `已拉取 ${models.length} 个模型`;
+    toast("模型列表已更新");
+  } catch (error) {
+    els.modelStatus.textContent = error.message;
+    toast(error.message);
+  } finally {
+    els.fetchModelsBtn.disabled = false;
+  }
+}
+
+function downloadJSON() {
+  const blob = new Blob([JSON.stringify(exportAllData(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `xiaoshouji-data-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importJSON(file) {
+  const text = await file.text();
+  importAllData(JSON.parse(text));
+  render();
+  toast("导入完成");
+}
+
+function maybeGenerateOfflineUnread() {
+  const settings = getSettings();
+  const last = getLastOpenAt();
+  if (!settings.allowProactiveMessage || !last) return;
+  const diff = Date.now() - new Date(last).getTime();
+  if (diff < 1000 * 60 * 60 * 3) return;
+  const roles = getRoles();
+  const current = getCurrentRoleId();
+  for (const role of roles) {
+    if (role.id !== current) setUnread(role.id, Math.max(getUnread()[role.id] || 0, 1));
+  }
+}
+
+function bindEvents() {
+  els.tabs.forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tabTarget)));
+  $("#backToChatsBtn").addEventListener("click", closeChat);
+  $("#topNewChatBtn").addEventListener("click", openNewChatDialog);
+  $("#addRoleBtn").addEventListener("click", () => openRoleDialog());
+  $("#closeNewChatBtn").addEventListener("click", () => closeDialog(els.newChatDialog));
+  $("#newContactFromChatBtn").addEventListener("click", () => {
+    closeDialog(els.newChatDialog);
+    openRoleDialog(null, { startChatAfterSave: true });
+  });
+  $("#emptyAddRoleBtn")?.addEventListener("click", openNewChatDialog);
+  $("#chatSearch").addEventListener("input", renderChatList);
+
+  els.sendBtn.addEventListener("click", sendMessage);
+  els.messageInput.addEventListener("input", autoResizeInput);
+  els.messageInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  $$(".mode-pill").forEach((button) => {
+    button.addEventListener("click", () => {
+      setCurrentMode(button.dataset.mode);
+      renderChatDetail();
+      toast(button.dataset.mode === "offline" ? "已切到线下模式" : "已切到线上模式");
+    });
+  });
+
+  $("#pullProactiveBtn").addEventListener("click", createProactiveMessage);
+  $("#rememberLastBtn").addEventListener("click", () => {
+    const roleId = getCurrentRoleId();
+    const lastUserMessage = getChats(roleId).filter((msg) => msg.sender === "user").at(-1);
+    if (!lastUserMessage) return toast("还没有可记住的用户消息");
+    rememberText(roleId, lastUserMessage.content, 4, 4);
+    toast("已记住这件事");
+  });
+
+  $("#openChatMenuBtn").addEventListener("click", () => showDialog(els.chatMenuDialog));
+  $("#closeChatMenuBtn").addEventListener("click", () => closeDialog(els.chatMenuDialog));
+  $("#generateMemoryBtn").addEventListener("click", async () => {
+    try {
+      const items = await summarizeRecentChatToMemory();
+      toast(items.length ? `整理了 ${items.length} 条记忆` : "没有发现值得长期记住的内容");
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#generateMomentFromChatBtn").addEventListener("click", async () => {
+    await handleGenerateMoment();
+    closeDialog(els.chatMenuDialog);
+  });
+  $("#editCurrentRoleBtn").addEventListener("click", () => {
+    closeDialog(els.chatMenuDialog);
+    openRoleDialog(getCurrentRoleId());
+  });
+
+  els.roleForm.addEventListener("submit", saveRoleFromForm);
+  $("#closeRoleDialogBtn").addEventListener("click", () => {
+    state.startChatAfterSave = false;
+    closeDialog(els.roleDialog);
+  });
+  els.roleAvatarInput.addEventListener("change", async () => {
+    const file = els.roleAvatarInput.files?.[0];
+    if (file) els.roleAvatarPreview.src = await readFileAsDataURL(file);
+  });
+  els.deleteRoleBtn.addEventListener("click", () => {
+    if (!state.editingRoleId) return;
+    if (confirm("确定删除这个联系人吗？聊天、记忆、朋友圈也会一起删除。")) {
+      deleteRole(state.editingRoleId);
+      closeDialog(els.roleDialog);
+      render();
+      toast("联系人已删除");
+    }
+  });
+
+  $("#closeProfileBtn").addEventListener("click", () => closeDialog(els.profileDialog));
+  $("#profileChatBtn").addEventListener("click", () => {
+    closeDialog(els.profileDialog);
+    openChat(state.profileRoleId);
+  });
+  $("#profileEditBtn").addEventListener("click", () => {
+    closeDialog(els.profileDialog);
+    openRoleDialog(state.profileRoleId);
+  });
+
+  $("#generateMomentBtn").addEventListener("click", handleGenerateMoment);
+
+  [
+    els.userNameInput,
+    els.apiKeyInput,
+    els.apiBaseInput,
+    els.modelInput,
+    els.defaultModeSelect,
+    els.talkLevelInput,
+    els.allowProactiveInput,
+    els.allowMemoryInput,
+    els.allowMomentsInput,
+  ].forEach((input) => input.addEventListener("change", saveMeSettingFromInputs));
+  els.fetchModelsBtn.addEventListener("click", handleFetchModels);
+  els.talkLevelInput.addEventListener("input", () => {
+    els.talkLevelText.textContent = `Lv${els.talkLevelInput.value}`;
+  });
+  els.userAvatarInput.addEventListener("change", async () => {
+    const file = els.userAvatarInput.files?.[0];
+    if (file) {
+      saveSettings({ userAvatar: await readFileAsDataURL(file) });
+      renderMe();
+      renderMessages();
+    }
+  });
+
+  $("#exportDataBtn").addEventListener("click", downloadJSON);
+  $("#exportTopBtn").addEventListener("click", downloadJSON);
+  $("#importDataInput").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (file) await importJSON(file);
+  });
+  $("#clearChatBtn").addEventListener("click", () => {
+    if (confirm("确定清空当前联系人聊天记录吗？")) {
+      clearChats(getCurrentRoleId());
+      render();
+      toast("聊天记录已清空");
+    }
+  });
+  $("#clearMemoryBtn").addEventListener("click", () => {
+    if (confirm("确定清空当前联系人记忆吗？")) {
+      clearMemories(getCurrentRoleId());
+      toast("记忆已清空");
+    }
+  });
+}
+
+async function handleGenerateMoment() {
+  try {
+    toast("正在生成朋友圈…");
+    await createMomentForRole(getCurrentRoleId());
+    switchTab("moments");
+    toast("朋友圈发好了");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function tickClock() {
+  els.nowLabel.textContent = `${getTimeContext().period} ${formatClock()}`;
+}
+
+function bootstrap() {
+  initStore();
+  maybeGenerateOfflineUnread();
+  bindEvents();
+  render();
+  tickClock();
+  setInterval(tickClock, 30 * 1000);
+  window.addEventListener("beforeunload", () => setLastOpenAt(nowISO()));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") setLastOpenAt(nowISO());
+  });
+}
+
+bootstrap();

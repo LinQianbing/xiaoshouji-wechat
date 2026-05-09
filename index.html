@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>小手机 MVP</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div class="desktop-bg">
+      <main class="phone-frame" id="app">
+        <!-- 聊天列表 -->
+        <section class="screen active" id="screen-chats" data-tab="chats">
+          <header class="wechat-bar">
+            <button class="bar-btn invisible" type="button">返回</button>
+            <h1>微信</h1>
+            <button class="bar-icon plus-icon" id="topNewChatBtn" type="button" aria-label="发起聊天"></button>
+          </header>
+          <div class="search-row">
+            <span class="search-icon" aria-hidden="true"></span>
+            <input id="chatSearch" type="search" placeholder="搜索联系人或聊天记录" />
+          </div>
+          <div class="list-page" id="chatList"></div>
+        </section>
+
+        <!-- 单聊详情：像微信一样进入后隐藏底部导航 -->
+        <section class="screen chat-detail" id="screen-chat-detail">
+          <header class="wechat-bar chat-top">
+            <button class="bar-btn" id="backToChatsBtn" type="button">‹</button>
+            <div class="chat-title-wrap">
+              <h1 id="chatTitle">联系人</h1>
+              <p id="chatSubtitle">在线 · 线上模式</p>
+            </div>
+            <button class="bar-icon" id="openChatMenuBtn" type="button" aria-label="聊天设置">⋯</button>
+          </header>
+
+          <div class="mode-line">
+            <button class="mode-pill active" data-mode="online" type="button">线上</button>
+            <button class="mode-pill" data-mode="offline" type="button">线下</button>
+            <span id="nowLabel">--:--</span>
+          </div>
+
+          <div class="proactive-banner hidden" id="proactiveBanner">
+            <span id="proactiveText">TA 好像有话想说</span>
+            <button id="pullProactiveBtn" type="button">看看</button>
+          </div>
+
+          <div class="messages" id="messageList"></div>
+
+          <footer class="input-bar">
+            <button class="round-tool" id="rememberLastBtn" type="button" title="记住最后一条用户消息">记</button>
+            <textarea id="messageInput" rows="1" placeholder="发消息"></textarea>
+            <button class="send-btn" id="sendBtn" type="button">发送</button>
+          </footer>
+        </section>
+
+        <!-- 通讯录 -->
+        <section class="screen" id="screen-contacts" data-tab="contacts">
+          <header class="wechat-bar">
+            <button class="bar-btn invisible" type="button">返回</button>
+            <h1>通讯录</h1>
+            <button class="bar-icon plus-icon" id="addRoleBtn" type="button" aria-label="添加联系人"></button>
+          </header>
+          <div class="list-page contacts-page">
+            <div class="wechat-group-title">朋友</div>
+            <div id="contactList" class="contact-list"></div>
+          </div>
+        </section>
+
+        <!-- 朋友圈 -->
+        <section class="screen" id="screen-moments" data-tab="moments">
+          <header class="wechat-bar">
+            <button class="bar-btn invisible" type="button">返回</button>
+            <h1>朋友圈</h1>
+            <button class="bar-icon camera-icon" id="generateMomentBtn" type="button" aria-label="发布朋友圈"></button>
+          </header>
+          <div class="moments-hero">
+            <div>
+              <p>小手机朋友圈</p>
+              <strong id="momentsHeroName">看看 TA 们最近在想什么</strong>
+            </div>
+            <img id="momentsUserAvatar" alt="用户头像" />
+          </div>
+          <div class="moments-list" id="momentsList"></div>
+        </section>
+
+        <!-- 我 / 设置 -->
+        <section class="screen" id="screen-me" data-tab="me">
+          <header class="wechat-bar">
+            <button class="bar-btn invisible" type="button">返回</button>
+            <h1>我</h1>
+            <button class="bar-icon more-icon" id="exportTopBtn" type="button" aria-label="导出数据"></button>
+          </header>
+          <div class="me-page">
+            <section class="me-card">
+              <label class="avatar-uploader">
+                <img id="meAvatar" alt="用户头像" />
+                <input id="userAvatarInput" type="file" accept="image/*" hidden />
+              </label>
+              <div>
+                <input class="me-name-input" id="userNameInput" type="text" placeholder="你的昵称" />
+                <p>小手机主人 · 本地数据</p>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <h2>AI 设置</h2>
+              <label class="setting-row">
+                <span>API Key</span>
+                <input id="apiKeyInput" type="password" placeholder="只保存在本地" />
+              </label>
+              <label class="setting-row model-row">
+                <span>模型</span>
+                <div class="model-control">
+                  <input id="modelInput" type="text" list="modelList" placeholder="例如 gpt-4o-mini" />
+                  <datalist id="modelList"></datalist>
+                  <button id="fetchModelsBtn" type="button">拉取</button>
+                </div>
+              </label>
+              <p class="model-status" id="modelStatus"></p>
+              <label class="setting-row">
+                <span>接口地址</span>
+                <input id="apiBaseInput" type="text" placeholder="OpenAI-compatible URL" />
+              </label>
+            </section>
+
+            <section class="settings-group">
+              <h2>聊天体验</h2>
+              <label class="setting-row">
+                <span>默认模式</span>
+                <select id="defaultModeSelect">
+                  <option value="online">线上</option>
+                  <option value="offline">线下</option>
+                </select>
+              </label>
+              <label class="setting-range">
+                <span>话唠程度 <b id="talkLevelText">Lv5</b></span>
+                <input id="talkLevelInput" type="range" min="1" max="10" step="1" />
+              </label>
+              <label class="switch-row">
+                <span>允许主动消息</span>
+                <input id="allowProactiveInput" type="checkbox" />
+              </label>
+              <label class="switch-row">
+                <span>允许长期记忆</span>
+                <input id="allowMemoryInput" type="checkbox" />
+              </label>
+              <label class="switch-row">
+                <span>允许朋友圈生成</span>
+                <input id="allowMomentsInput" type="checkbox" />
+              </label>
+            </section>
+
+            <section class="settings-group danger-zone">
+              <h2>数据</h2>
+              <button class="plain-row" id="exportDataBtn" type="button">导出数据</button>
+              <label class="plain-row file-row">
+                导入数据
+                <input id="importDataInput" type="file" accept="application/json" hidden />
+              </label>
+              <button class="plain-row" id="clearChatBtn" type="button">清空当前联系人聊天记录</button>
+              <button class="plain-row" id="clearMemoryBtn" type="button">清空当前联系人记忆</button>
+            </section>
+
+            <section class="settings-group about-card">
+              <h2>关于小手机</h2>
+              <p>这是一个本地网页 App。联系人、聊天、朋友圈和记忆都保存在浏览器 localStorage 里，不上传用户数据。</p>
+            </section>
+          </div>
+        </section>
+
+        <nav class="tabbar" id="tabbar">
+          <button class="tab active" data-tab-target="chats" type="button"><i class="tab-icon tab-chat" aria-hidden="true"></i><em>微信</em></button>
+          <button class="tab" data-tab-target="contacts" type="button"><i class="tab-icon tab-contacts" aria-hidden="true"></i><em>通讯录</em></button>
+          <button class="tab" data-tab-target="moments" type="button"><i class="tab-icon tab-moments" aria-hidden="true"></i><em>发现</em></button>
+          <button class="tab" data-tab-target="me" type="button"><i class="tab-icon tab-me" aria-hidden="true"></i><em>我</em></button>
+        </nav>
+      </main>
+    </div>
+
+    <!-- 联系人编辑弹层 -->
+    <dialog class="sheet-dialog" id="roleDialog">
+      <form method="dialog" class="role-sheet" id="roleForm">
+        <header>
+          <button value="cancel" type="button" id="closeRoleDialogBtn">取消</button>
+          <strong id="roleDialogTitle">添加联系人</strong>
+          <button value="default" type="submit">保存</button>
+        </header>
+        <div class="role-edit-body">
+          <label class="role-avatar-picker">
+            <img id="roleAvatarPreview" alt="联系人头像" />
+            <input id="roleAvatarInput" type="file" accept="image/*" hidden />
+            <span>点击换头像</span>
+          </label>
+          <label>
+            <span>名字</span>
+            <input id="roleNameInput" type="text" placeholder="例如：小手机" required />
+          </label>
+          <label>
+            <span>性别</span>
+            <select id="roleGenderInput">
+              <option value="未设定">未设定</option>
+              <option value="女">女</option>
+              <option value="男">男</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+          <label>
+            <span>资料备注</span>
+            <textarea id="roleDescInput" rows="8" placeholder="写性格、关系、说话习惯、背景、喜欢或讨厌什么。"></textarea>
+          </label>
+          <button class="delete-role-btn hidden" id="deleteRoleBtn" type="button">删除联系人</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 发起聊天弹层 -->
+    <dialog class="sheet-dialog" id="newChatDialog">
+      <div class="new-chat-sheet">
+        <header>
+          <button type="button" id="closeNewChatBtn">取消</button>
+          <strong>发起聊天</strong>
+          <button type="button" id="newContactFromChatBtn">添加</button>
+        </header>
+        <div class="new-chat-list" id="newChatList"></div>
+      </div>
+    </dialog>
+
+    <!-- 联系人详情弹层 -->
+    <dialog class="sheet-dialog" id="profileDialog">
+      <div class="profile-sheet">
+        <button class="sheet-close" id="closeProfileBtn" type="button">×</button>
+        <img id="profileAvatar" alt="联系人头像" />
+        <h2 id="profileName">联系人</h2>
+        <p id="profileMeta">性别</p>
+        <p id="profileDesc"></p>
+        <div class="profile-actions">
+          <button id="profileChatBtn" type="button">发消息</button>
+          <button id="profileEditBtn" type="button">编辑资料</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 聊天菜单弹层 -->
+    <dialog class="sheet-dialog" id="chatMenuDialog">
+      <div class="menu-sheet">
+        <button class="sheet-close" id="closeChatMenuBtn" type="button">×</button>
+        <h2>聊天设置</h2>
+        <button id="generateMemoryBtn" type="button">整理最近聊天为记忆</button>
+        <button id="generateMomentFromChatBtn" type="button">根据最近聊天发朋友圈</button>
+        <button id="editCurrentRoleBtn" type="button">编辑联系人资料</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
