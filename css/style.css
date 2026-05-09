@@ -319,6 +319,16 @@ input[type="range"] {
   text-overflow: ellipsis;
 }
 
+.status-tag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #eeeeee;
+  color: #777;
+  font-size: 11px;
+}
+
 .unread-dot {
   display: none;
   min-width: 18px;
@@ -688,6 +698,20 @@ input[type="range"] {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5)),
     linear-gradient(135deg, #8aa6a3, #5d716a 45%, #3c4640);
+  background-size: cover;
+  background-position: center;
+}
+
+.cover-change-btn {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.36);
+  color: #fff;
+  padding: 5px 8px;
+  font-size: 12px;
 }
 
 .moments-hero div {
@@ -823,6 +847,7 @@ input[type="range"] {
 .setting-row,
 .switch-row,
 .setting-range,
+.setting-area,
 .plain-row {
   min-height: 52px;
   display: flex;
@@ -905,6 +930,20 @@ input[type="range"] {
 
 .setting-range input {
   width: 100%;
+}
+
+.setting-area {
+  display: block;
+}
+
+.setting-area textarea {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: #fff;
+  color: #111;
+  line-height: 1.55;
 }
 
 .switch-row input {
@@ -1138,6 +1177,109 @@ input[type="range"] {
 #profileChatBtn {
   background: var(--wechat-green-dark);
   color: #fff;
+}
+
+.chat-info-screen {
+  z-index: 4;
+}
+
+.chat-info-page {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 28px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-info-profile {
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  align-items: center;
+  gap: 13px;
+  padding: 18px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-info-profile img {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #ddd;
+}
+
+.chat-info-profile strong {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.chat-info-profile button,
+.memory-editor button {
+  border: 0;
+  border-radius: 5px;
+  background: var(--wechat-green-dark);
+  color: #fff;
+  padding: 7px 11px;
+  font-size: 13px;
+}
+
+.setting-note {
+  margin: 0;
+  padding: 8px 16px 12px;
+  color: #999;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.memory-editor {
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+
+.memory-editor textarea,
+.memory-edit-item textarea {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  border-radius: 6px;
+  background: #f7f7f7;
+  padding: 10px;
+  line-height: 1.55;
+  color: #111;
+}
+
+.memory-editor button {
+  margin-top: 8px;
+}
+
+.memory-edit-list {
+  background: #fff;
+}
+
+.memory-edit-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.memory-edit-item button {
+  margin-top: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  padding: 0;
+  font-size: 13px;
+}
+
+.memory-empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: #999;
+  background: #fff;
+  font-size: 13px;
 }
 
 .menu-sheet h2 {

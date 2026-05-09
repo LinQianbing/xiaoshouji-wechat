@@ -24,6 +24,7 @@ import {
   setCurrentMode,
   setCurrentRoleId,
   setLastOpenAt,
+  setMemories,
   setUnread,
 } from "./storage.js";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
@@ -47,6 +48,8 @@ const els = {
   tabs: $$(".tab"),
   screens: $$(".screen[data-tab]"),
   chatDetail: $("#screen-chat-detail"),
+  chatInfo: $("#screen-chat-info"),
+  chatInfoProfile: $("#chatInfoProfile"),
   chatList: $("#chatList"),
   contactList: $("#contactList"),
   momentsList: $("#momentsList"),
@@ -78,15 +81,20 @@ const els = {
   profileMeta: $("#profileMeta"),
   profileDesc: $("#profileDesc"),
 
-  chatMenuDialog: $("#chatMenuDialog"),
   newChatDialog: $("#newChatDialog"),
   newChatList: $("#newChatList"),
+  pinChatInput: $("#pinChatInput"),
+  blockChatInput: $("#blockChatInput"),
+  newMemoryInput: $("#newMemoryInput"),
+  memoryEditList: $("#memoryEditList"),
 
   meAvatar: $("#meAvatar"),
   momentsUserAvatar: $("#momentsUserAvatar"),
   momentsHeroName: $("#momentsHeroName"),
+  momentsCoverInput: $("#momentsCoverInput"),
   userAvatarInput: $("#userAvatarInput"),
   userNameInput: $("#userNameInput"),
+  userPersonaInput: $("#userPersonaInput"),
   apiKeyInput: $("#apiKeyInput"),
   apiBaseInput: $("#apiBaseInput"),
   modelInput: $("#modelInput"),
@@ -125,13 +133,13 @@ function switchTab(tab) {
   state.activeTab = tab;
   els.screens.forEach((screen) => screen.classList.toggle("active", screen.dataset.tab === tab));
   els.chatDetail.classList.remove("active");
+  els.chatInfo.classList.remove("active");
   els.tabbar.classList.remove("hidden");
   els.tabs.forEach((item) => item.classList.toggle("active", item.dataset.tabTarget === tab));
   render();
 }
 
 function openApiSettings() {
-  closeDialog(els.chatMenuDialog);
   closeDialog(els.newChatDialog);
   closeDialog(els.profileDialog);
   closeDialog(els.roleDialog);
@@ -161,6 +169,22 @@ function openChat(roleId) {
   setCurrentRoleId(roleId);
   setUnread(roleId, 0);
   els.screens.forEach((screen) => screen.classList.remove("active"));
+  els.chatInfo.classList.remove("active");
+  els.chatDetail.classList.add("active");
+  els.tabbar.classList.add("hidden");
+  renderChatDetail();
+}
+
+function openChatInfo() {
+  els.screens.forEach((screen) => screen.classList.remove("active"));
+  els.chatDetail.classList.remove("active");
+  els.chatInfo.classList.add("active");
+  els.tabbar.classList.add("hidden");
+  renderChatInfo();
+}
+
+function closeChatInfo() {
+  els.chatInfo.classList.remove("active");
   els.chatDetail.classList.add("active");
   els.tabbar.classList.add("hidden");
   renderChatDetail();
@@ -168,6 +192,7 @@ function openChat(roleId) {
 
 function closeChat() {
   els.chatDetail.classList.remove("active");
+  els.chatInfo.classList.remove("active");
   els.tabbar.classList.remove("hidden");
   switchTab("chats");
 }
@@ -196,7 +221,9 @@ function renderChatList() {
   const query = $("#chatSearch")?.value?.trim()?.toLowerCase() || "";
   const conversations = roles.filter((role) => getChats(role.id).length || unread[role.id]);
   const source = query ? roles : conversations;
-  const filtered = source.filter((role) => `${role.name} ${role.description} ${latestPreview(role.id).text}`.toLowerCase().includes(query));
+  const filtered = source
+    .filter((role) => `${role.name} ${role.description} ${latestPreview(role.id).text}`.toLowerCase().includes(query))
+    .sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || latestTime(b.id) - latestTime(a.id));
   if (!filtered.length) {
     const message = query ? "没有找到相关联系人或聊天记录。" : "暂无聊天。";
     els.chatList.innerHTML = `<div class="empty-state">${message}<br><button id="emptyAddRoleBtn" type="button">发起聊天</button></div>`;
@@ -216,7 +243,7 @@ function renderChatList() {
               <strong>${escapeHTML(role.name)}</strong>
               <time>${escapeHTML(preview.time)}</time>
             </div>
-            <p class="cell-subtitle">${escapeHTML(preview.text)}</p>
+            <p class="cell-subtitle">${role.isPinned ? '<span class="status-tag">置顶</span>' : ""}${role.isBlocked ? '<span class="status-tag">黑名单</span>' : ""}${escapeHTML(preview.text)}</p>
           </div>
           <span class="unread-dot ${count ? "show" : ""}">${count}</span>
         </article>
@@ -225,6 +252,12 @@ function renderChatList() {
     .join("");
 
   $$(".chat-cell").forEach((cell) => cell.addEventListener("click", () => openChat(cell.dataset.roleId)));
+}
+
+function latestTime(roleId) {
+  const messages = getChats(roleId);
+  const last = messages[messages.length - 1];
+  return last ? new Date(last.createdAt).getTime() : 0;
 }
 
 function renderNewChatList() {
@@ -278,6 +311,10 @@ function renderMoments() {
   const settings = getSettings();
   els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.momentsHeroName.textContent = `${settings.userName || "我"}的小手机`;
+  const hero = $(".moments-hero");
+  hero.style.backgroundImage = settings.momentsCover
+    ? `linear-gradient(180deg, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.52)), url("${settings.momentsCover}")`
+    : "";
   const moments = getAllMoments();
   if (!moments.length) {
     els.momentsList.innerHTML = `<div class="empty-state">朋友圈还空着。<br>点右上角相机，让当前联系人发一条动态。</div>`;
@@ -328,6 +365,7 @@ function renderMe() {
   const settings = getSettings();
   els.meAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.userNameInput.value = settings.userName || "";
+  els.userPersonaInput.value = settings.userPersona || "";
   els.apiKeyInput.value = settings.apiKey || "";
   els.apiBaseInput.value = settings.apiBase || "";
   els.modelInput.value = settings.model || "";
@@ -345,12 +383,65 @@ function renderMe() {
   els.allowMomentsInput.checked = Boolean(settings.allowMoments);
 }
 
+function renderChatInfo() {
+  const role = getRole();
+  els.chatInfoProfile.innerHTML = `
+    <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
+    <strong>${escapeHTML(role.name)}</strong>
+    <button id="infoProfileChatBtn" type="button">发消息</button>
+  `;
+  $("#infoProfileChatBtn")?.addEventListener("click", closeChatInfo);
+  els.pinChatInput.checked = Boolean(role.isPinned);
+  els.blockChatInput.checked = Boolean(role.isBlocked);
+  renderMemoryEditList();
+}
+
+function renderMemoryEditList() {
+  const roleId = getCurrentRoleId();
+  const memories = getMemories(roleId);
+  if (!memories.length) {
+    els.memoryEditList.innerHTML = `<p class="memory-empty">还没有手动记忆。</p>`;
+    return;
+  }
+  els.memoryEditList.innerHTML = memories
+    .map(
+      (item) => `
+        <article class="memory-edit-item" data-memory-id="${item.id}">
+          <textarea rows="3">${escapeHTML(item.content)}</textarea>
+          <button type="button">删除</button>
+        </article>
+      `,
+    )
+    .join("");
+
+  $$(".memory-edit-item textarea").forEach((input) => {
+    input.addEventListener("change", () => {
+      const item = input.closest(".memory-edit-item");
+      const next = getMemories(roleId).map((memory) =>
+        memory.id === item.dataset.memoryId ? { ...memory, content: input.value.trim(), updatedAt: nowISO() } : memory,
+      );
+      setMemories(roleId, next.filter((memory) => memory.content));
+      renderMemoryEditList();
+      toast("记忆已保存");
+    });
+  });
+
+  $$(".memory-edit-item button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = button.closest(".memory-edit-item");
+      setMemories(roleId, getMemories(roleId).filter((memory) => memory.id !== item.dataset.memoryId));
+      renderMemoryEditList();
+      toast("记忆已删除");
+    });
+  });
+}
+
 function renderChatDetail() {
   const role = getRole();
   const mode = getCurrentMode();
   const time = getTimeContext();
   els.chatTitle.textContent = role.name;
-  els.chatSubtitle.textContent = `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
+  els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 仍可查看" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
   els.nowLabel.textContent = `${time.period} ${time.time}`;
   $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
   renderMessages();
@@ -530,6 +621,8 @@ function saveRoleFromForm(event) {
     gender: els.roleGenderInput.value,
     avatar: els.roleAvatarPreview.src || DEFAULT_ROLE_AVATAR,
     description: els.roleDescInput.value,
+    isPinned: existing?.isPinned,
+    isBlocked: existing?.isBlocked,
     createdAt: existing?.createdAt,
   });
   setCurrentRoleId(role.id);
@@ -559,6 +652,7 @@ function autoResizeInput() {
 function saveMeSettingFromInputs() {
   saveSettings({
     userName: els.userNameInput.value.trim() || "我",
+    userPersona: els.userPersonaInput.value.trim(),
     apiKey: els.apiKeyInput.value.trim(),
     apiBase: els.apiBaseInput.value.trim() || "https://api.openai.com/v1/chat/completions",
     model: els.modelInput.value.trim() || "gpt-4o-mini",
@@ -664,22 +758,43 @@ function bindEvents() {
     toast("已记住这件事");
   });
 
-  $("#openChatMenuBtn").addEventListener("click", () => showDialog(els.chatMenuDialog));
-  $("#closeChatMenuBtn").addEventListener("click", () => closeDialog(els.chatMenuDialog));
-  $("#generateMemoryBtn").addEventListener("click", async () => {
+  $("#openChatMenuBtn").addEventListener("click", openChatInfo);
+  $("#backToChatInfoBtn").addEventListener("click", closeChatInfo);
+  els.pinChatInput.addEventListener("change", () => {
+    const role = getRole();
+    saveRole({ ...role, isPinned: els.pinChatInput.checked });
+    renderChatInfo();
+    renderChatList();
+    toast(els.pinChatInput.checked ? "已置顶" : "已取消置顶");
+  });
+  els.blockChatInput.addEventListener("change", () => {
+    const role = getRole();
+    saveRole({ ...role, isBlocked: els.blockChatInput.checked });
+    renderChatInfo();
+    renderChatList();
+    toast(els.blockChatInput.checked ? "已加入黑名单" : "已移出黑名单");
+  });
+  $("#addMemoryBtn").addEventListener("click", () => {
+    const text = els.newMemoryInput.value.trim();
+    if (!text) return toast("先写一条希望对方记住的事");
+    addMemory(getCurrentRoleId(), { content: text, importance: 5, emotionWeight: 5 });
+    els.newMemoryInput.value = "";
+    renderMemoryEditList();
+    toast("已添加记忆");
+  });
+  $("#infoGenerateMemoryBtn").addEventListener("click", async () => {
     try {
       const items = await summarizeRecentChatToMemory();
+      renderMemoryEditList();
       toast(items.length ? `整理了 ${items.length} 条记忆` : "没有发现值得长期记住的内容");
     } catch (error) {
       handleApiError(error);
     }
   });
-  $("#generateMomentFromChatBtn").addEventListener("click", async () => {
+  $("#infoGenerateMomentBtn").addEventListener("click", async () => {
     await handleGenerateMoment();
-    closeDialog(els.chatMenuDialog);
   });
-  $("#editCurrentRoleBtn").addEventListener("click", () => {
-    closeDialog(els.chatMenuDialog);
+  $("#infoEditRoleBtn").addEventListener("click", () => {
     openRoleDialog(getCurrentRoleId());
   });
 
@@ -716,6 +831,7 @@ function bindEvents() {
 
   [
     els.userNameInput,
+    els.userPersonaInput,
     els.apiKeyInput,
     els.apiBaseInput,
     els.modelInput,
@@ -737,6 +853,15 @@ function bindEvents() {
       renderMessages();
     }
   });
+  els.momentsCoverInput.addEventListener("change", async () => {
+    const file = els.momentsCoverInput.files?.[0];
+    if (file) {
+      saveSettings({ momentsCover: await readFileAsDataURL(file) });
+      renderMoments();
+      toast("朋友圈背景已更换");
+    }
+  });
+  $("#changeMomentsCoverBtn").addEventListener("click", () => els.momentsCoverInput.click());
 
   $("#exportDataBtn").addEventListener("click", downloadJSON);
   $("#exportTopBtn").addEventListener("click", downloadJSON);

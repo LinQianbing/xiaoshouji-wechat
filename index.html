@@ -65,6 +65,45 @@
           </footer>
         </section>
 
+        <!-- 聊天信息 -->
+        <section class="screen chat-info-screen" id="screen-chat-info">
+          <header class="wechat-bar">
+            <button class="bar-btn" id="backToChatInfoBtn" type="button">‹</button>
+            <h1>聊天信息</h1>
+            <button class="bar-btn invisible" type="button">返回</button>
+          </header>
+          <div class="chat-info-page">
+            <section class="chat-info-profile" id="chatInfoProfile"></section>
+
+            <section class="settings-group">
+              <label class="switch-row">
+                <span>置顶聊天</span>
+                <input id="pinChatInput" type="checkbox" />
+              </label>
+              <label class="switch-row">
+                <span>加入黑名单</span>
+                <input id="blockChatInput" type="checkbox" />
+              </label>
+              <p class="setting-note">黑名单只是状态标记，聊天记录和对方消息仍然可以查看。</p>
+            </section>
+
+            <section class="settings-group">
+              <h2>希望对方记住</h2>
+              <div class="memory-editor">
+                <textarea id="newMemoryInput" rows="3" placeholder="写一条希望对方长期记住的事"></textarea>
+                <button id="addMemoryBtn" type="button">添加</button>
+              </div>
+              <div id="memoryEditList" class="memory-edit-list"></div>
+            </section>
+
+            <section class="settings-group">
+              <button class="plain-row" id="infoEditRoleBtn" type="button">编辑联系人资料</button>
+              <button class="plain-row" id="infoGenerateMemoryBtn" type="button">整理最近聊天为记忆</button>
+              <button class="plain-row" id="infoGenerateMomentBtn" type="button">根据最近聊天发朋友圈</button>
+            </section>
+          </div>
+        </section>
+
         <!-- 通讯录 -->
         <section class="screen" id="screen-contacts" data-tab="contacts">
           <header class="wechat-bar">
@@ -86,6 +125,8 @@
             <button class="bar-icon camera-icon" id="generateMomentBtn" type="button" aria-label="发布朋友圈"></button>
           </header>
           <div class="moments-hero">
+            <button class="cover-change-btn" id="changeMomentsCoverBtn" type="button">更换背景</button>
+            <input id="momentsCoverInput" type="file" accept="image/*" hidden />
             <div>
               <p>小手机朋友圈</p>
               <strong id="momentsHeroName">看看 TA 们最近在想什么</strong>
@@ -112,6 +153,13 @@
                 <input class="me-name-input" id="userNameInput" type="text" placeholder="你的昵称" />
                 <p>小手机主人 · 本地数据</p>
               </div>
+            </section>
+
+            <section class="settings-group">
+              <h2>我的人设</h2>
+              <label class="setting-area">
+                <textarea id="userPersonaInput" rows="5" placeholder="写你的身份、关系、性格、说话习惯，角色会在回复时参考。"></textarea>
+              </label>
             </section>
 
             <section class="settings-group">
@@ -249,17 +297,6 @@
           <button id="profileChatBtn" type="button">发消息</button>
           <button id="profileEditBtn" type="button">编辑资料</button>
         </div>
-      </div>
-    </dialog>
-
-    <!-- 聊天菜单弹层 -->
-    <dialog class="sheet-dialog" id="chatMenuDialog">
-      <div class="menu-sheet">
-        <button class="sheet-close" id="closeChatMenuBtn" type="button">×</button>
-        <h2>聊天设置</h2>
-        <button id="generateMemoryBtn" type="button">整理最近聊天为记忆</button>
-        <button id="generateMomentFromChatBtn" type="button">根据最近聊天发朋友圈</button>
-        <button id="editCurrentRoleBtn" type="button">编辑联系人资料</button>
       </div>
     </dialog>
 

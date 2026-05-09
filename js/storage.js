@@ -22,6 +22,8 @@ const defaultSettings = {
   apiBase: "https://api.openai.com/v1/chat/completions",
   model: "gpt-4o-mini",
   availableModels: [],
+  userPersona: "",
+  momentsCover: "",
   talkLevel: 5,
   defaultMode: "online",
   allowProactiveMessage: true,
@@ -35,6 +37,8 @@ const defaultRole = {
   gender: "未设定",
   avatar: DEFAULT_ROLE_AVATAR,
   description: "像住在手机里的聊天搭子。说话自然，短句多一点，偶尔吐槽，关心用户的日常，但不要像 AI 助手一样总结。",
+  isPinned: false,
+  isBlocked: false,
   createdAt: nowISO(),
   updatedAt: nowISO(),
 };
@@ -98,6 +102,8 @@ export function saveRole(role) {
     gender: role.gender || "未设定",
     avatar: role.avatar || DEFAULT_ROLE_AVATAR,
     description: role.description || "",
+    isPinned: Boolean(role.isPinned),
+    isBlocked: Boolean(role.isBlocked),
     createdAt: role.createdAt || nowISO(),
     updatedAt: nowISO(),
   };

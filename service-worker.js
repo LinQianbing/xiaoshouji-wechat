@@ -1,4 +1,4 @@
-const CACHE_NAME = "xiaoshouji-pwa-v2";
+const CACHE_NAME = "xiaoshouji-pwa-v3";
 
 const APP_SHELL = [
   "./",
