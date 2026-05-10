@@ -319,7 +319,11 @@ function loadCanvasImage(src) {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => resolve(null);
-    image.src = src;
+    try {
+      image.src = /^(data:|blob:|https?:)/i.test(src) ? src : new URL(src, window.location.href).href;
+    } catch {
+      image.src = src;
+    }
   });
 }
 
@@ -343,9 +347,27 @@ function drawRoundedCoverImage(ctx, image, x, y, width, height, radius) {
   ctx.save();
   roundRectPath(ctx, x, y, width, height, radius);
   ctx.clip();
-  drawCoverImage(ctx, image, x, y, width, height);
+  const drawn = drawCoverImage(ctx, image, x, y, width, height);
   ctx.restore();
-  return true;
+  return drawn;
+}
+
+function drawFallbackAvatar(ctx, name, x, y, size, radius, isUser = false) {
+  const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+  gradient.addColorStop(0, isUser ? "#dbeafe" : "#dff8e8");
+  gradient.addColorStop(1, isUser ? "#93c5fd" : "#7adf9a");
+  ctx.fillStyle = gradient;
+  roundRectPath(ctx, x, y, size, size, radius);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+  roundRectPath(ctx, x + size * 0.23, y + size * 0.18, size * 0.54, size * 0.64, size * 0.16);
+  ctx.fill();
+  ctx.fillStyle = "#22343f";
+  ctx.font = `600 ${Math.max(13, Math.round(size * 0.36))}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(name || "小").trim().slice(0, 1), x + size / 2, y + size / 2 + 1);
+  ctx.textBaseline = "alphabetic";
 }
 
 function formatFileSize(bytes = 0) {
@@ -1569,7 +1591,8 @@ async function renderSelectedMessagesImage() {
     loadCanvasImage(settings.userAvatar || DEFAULT_USER_AVATAR),
     loadCanvasImage(role.avatar || DEFAULT_ROLE_AVATAR),
   ]);
-  const height = 88 + rows.reduce((sum, row) => sum + row.height + 14, 0) + 28;
+  const headerHeight = 56;
+  const height = headerHeight + rows.reduce((sum, row) => sum + row.height + 14, 0) + 22;
   const canvas = document.createElement("canvas");
   canvas.width = width * 2;
   canvas.height = height * 2;
@@ -1584,14 +1607,11 @@ async function renderSelectedMessagesImage() {
     ctx.fillRect(0, 0, width, height);
   }
   ctx.fillStyle = "#111";
-  ctx.font = "600 17px sans-serif";
+  ctx.font = "600 18px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(role.name, width / 2, 34);
-  ctx.font = "12px sans-serif";
-  ctx.fillStyle = "#888";
-  ctx.fillText("小手机聊天截图", width / 2, 58);
+  ctx.fillText(role.name, width / 2, 36);
 
-  let y = 82;
+  let y = headerHeight;
   for (const row of rows) {
     const { message, lines, isSystem } = row;
     const isUser = message.sender === "user";
@@ -1620,7 +1640,8 @@ async function renderSelectedMessagesImage() {
     ctx.fillStyle = "#d8d8d8";
     roundRectPath(ctx, avatarX, y, avatarSize, avatarSize, 7);
     ctx.fill();
-    drawRoundedCoverImage(ctx, isUser ? userAvatarImage : roleAvatarImage, avatarX, y, avatarSize, avatarSize, 7);
+    const avatarDrawn = drawRoundedCoverImage(ctx, isUser ? userAvatarImage : roleAvatarImage, avatarX, y, avatarSize, avatarSize, 7);
+    if (!avatarDrawn) drawFallbackAvatar(ctx, isUser ? settings.userName || "我" : role.name, avatarX, y, avatarSize, 7, isUser);
     ctx.fillStyle = "#111";
     ctx.font = "15px sans-serif";
     ctx.textAlign = "left";
@@ -1640,7 +1661,7 @@ async function renderSelectedMessagesImage() {
       row.quoteLines.forEach((line, index) => ctx.fillText(line, bubbleX + 19, quoteY + 16 + index * 16));
     }
     if (showBlockedWarning) {
-      const markX = bubbleX + bubbleWidth + 14;
+      const markX = Math.min(width - padding - 9, bubbleX + bubbleWidth + 14);
       const markY = y + Math.min(24, row.height / 2);
       ctx.fillStyle = "#fa5151";
       ctx.beginPath();
