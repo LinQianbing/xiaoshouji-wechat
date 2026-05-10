@@ -39,6 +39,7 @@ const defaultRole = {
   description: "像住在手机里的聊天搭子。说话短一点、自然一点，会接梗，偶尔吐槽，关心用户的日常，但不端着讲道理。",
   isPinned: false,
   isBlocked: false,
+  chatBackground: "",
   createdAt: nowISO(),
   updatedAt: nowISO(),
 };
@@ -104,6 +105,7 @@ export function saveRole(role) {
     description: role.description || "",
     isPinned: Boolean(role.isPinned),
     isBlocked: Boolean(role.isBlocked),
+    chatBackground: role.chatBackground || "",
     createdAt: role.createdAt || nowISO(),
     updatedAt: nowISO(),
   };

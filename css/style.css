@@ -556,7 +556,15 @@ input[type="range"] {
   flex: 1;
   overflow-y: auto;
   padding: 12px 12px 18px;
+  background-color: var(--wechat-bg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
   -webkit-overflow-scrolling: touch;
+}
+
+.messages.custom-chat-bg {
+  background-attachment: local;
 }
 
 .time-divider {
@@ -873,6 +881,10 @@ input[type="range"] {
 
 .message-select-bar button:disabled {
   color: #aaa;
+}
+
+.plain-row:disabled {
+  color: #bbb;
 }
 
 .input-bar {

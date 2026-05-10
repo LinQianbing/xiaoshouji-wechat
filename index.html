@@ -77,7 +77,11 @@
             </button>
             <button class="attach-action" id="patBtn" type="button">
               <span class="attach-icon attach-pat-icon" aria-hidden="true"></span>
-              <em>拍一拍</em>
+              <em>我拍TA</em>
+            </button>
+            <button class="attach-action" id="rolePatBtn" type="button">
+              <span class="attach-icon attach-pat-icon" aria-hidden="true"></span>
+              <em>TA拍我</em>
             </button>
             <input id="imageAttachInput" type="file" accept="image/*" hidden />
             <input id="fileAttachInput" type="file" hidden />
@@ -109,7 +113,15 @@
                 <span>加入黑名单</span>
                 <input id="blockChatInput" type="checkbox" />
               </label>
-              <p class="setting-note">黑名单只是状态标记，聊天记录和对方消息仍然可以查看。</p>
+              <p class="setting-note">加入黑名单后，对方不会再主动冒消息，也不会显示红色未读提示；聊天记录仍然保留。</p>
+            </section>
+
+            <section class="settings-group">
+              <h2>聊天背景</h2>
+              <button class="plain-row" id="changeChatBgBtn" type="button">更换当前聊天背景</button>
+              <button class="plain-row" id="clearChatBgBtn" type="button">恢复默认背景</button>
+              <input id="chatBgInput" type="file" accept="image/*" hidden />
+              <p class="setting-note">只影响当前联系人，选中消息截图也会使用这个背景。</p>
             </section>
 
             <section class="settings-group">

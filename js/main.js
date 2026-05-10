@@ -99,6 +99,7 @@ const els = {
   regenerateBtn: $("#regenerateBtn"),
   proactiveTalkBtn: $("#proactiveTalkBtn"),
   patBtn: $("#patBtn"),
+  rolePatBtn: $("#rolePatBtn"),
   toast: $("#toast"),
 
   roleDialog: $("#roleDialog"),
@@ -121,6 +122,9 @@ const els = {
   newChatList: $("#newChatList"),
   pinChatInput: $("#pinChatInput"),
   blockChatInput: $("#blockChatInput"),
+  chatBgInput: $("#chatBgInput"),
+  changeChatBgBtn: $("#changeChatBgBtn"),
+  clearChatBgBtn: $("#clearChatBgBtn"),
   newMemoryInput: $("#newMemoryInput"),
   memoryEditList: $("#memoryEditList"),
 
@@ -290,6 +294,41 @@ function readFileAsDataURL(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function loadCanvasImage(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+
+function drawCoverImage(ctx, image, x, y, width, height) {
+  if (!image) return false;
+  const naturalWidth = image.naturalWidth || image.width;
+  const naturalHeight = image.naturalHeight || image.height;
+  if (!naturalWidth || !naturalHeight) return false;
+  const imageRatio = naturalWidth / naturalHeight;
+  const targetRatio = width / height;
+  const sourceWidth = imageRatio > targetRatio ? naturalHeight * targetRatio : naturalWidth;
+  const sourceHeight = imageRatio > targetRatio ? naturalHeight : naturalWidth / targetRatio;
+  const sourceX = (naturalWidth - sourceWidth) / 2;
+  const sourceY = (naturalHeight - sourceHeight) / 2;
+  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  return true;
+}
+
+function drawRoundedCoverImage(ctx, image, x, y, width, height, radius) {
+  if (!image) return false;
+  ctx.save();
+  roundRectPath(ctx, x, y, width, height, radius);
+  ctx.clip();
+  drawCoverImage(ctx, image, x, y, width, height);
+  ctx.restore();
+  return true;
 }
 
 function formatFileSize(bytes = 0) {
@@ -546,7 +585,7 @@ function renderChatList() {
   els.chatList.innerHTML = filtered
     .map((role) => {
       const preview = latestPreview(role.id);
-      const count = unread[role.id] || 0;
+      const count = role.isBlocked ? 0 : unread[role.id] || 0;
       return `
         <article class="chat-cell" data-role-id="${role.id}">
           <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
@@ -881,7 +920,16 @@ function renderChatInfo() {
   $("#infoProfileChatBtn")?.addEventListener("click", closeChatInfo);
   els.pinChatInput.checked = Boolean(role.isPinned);
   els.blockChatInput.checked = Boolean(role.isBlocked);
+  els.clearChatBgBtn.disabled = !role.chatBackground;
   renderMemoryEditList();
+}
+
+function applyChatBackground(role = getRole()) {
+  const background = role.chatBackground || "";
+  els.messageList.classList.toggle("custom-chat-bg", Boolean(background));
+  els.messageList.style.backgroundImage = background
+    ? `linear-gradient(rgba(237, 237, 237, 0.46), rgba(237, 237, 237, 0.46)), url("${background}")`
+    : "";
 }
 
 function renderMemoryEditList() {
@@ -930,9 +978,10 @@ function renderChatDetail() {
   const mode = getCurrentMode();
   const time = getTimeContext();
   els.chatTitle.textContent = role.name;
-  els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 仍可查看" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
+  els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 不再主动打扰" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
   els.nowLabel.textContent = `${time.period} ${time.time}`;
   $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
+  applyChatBackground(role);
   updateRecallRangeButton();
   renderMessages();
   if (isApiReady(getSettings())) hideApiAlert();
@@ -1380,6 +1429,7 @@ function roundRectPath(ctx, x, y, width, height, radius) {
 
 async function renderSelectedMessagesImage() {
   const role = getRole();
+  const settings = getSettings();
   const selected = new Set(state.selectedMessageIds);
   const messages = getChats(role.id).filter((message) => selected.has(message.id));
   if (!messages.length) return toast("先选择要截图的消息");
@@ -1391,22 +1441,40 @@ async function renderSelectedMessagesImage() {
   const measureCanvas = document.createElement("canvas");
   const measureCtx = measureCanvas.getContext("2d");
   measureCtx.font = "15px sans-serif";
-  const rows = messages.map((message) => {
+  const rows = await Promise.all(messages.map(async (message) => {
     const text = message.isRevoked ? "你撤回了一条消息" : message.content || message.fileName || "";
     const isSystem = message.sender === "system" || message.type === "pat" || message.isRevoked;
+    const image = message.type === "image" && message.dataUrl ? await loadCanvasImage(message.dataUrl) : null;
+    const imageWidth = image ? image.naturalWidth || image.width : 0;
+    const imageHeight = image ? image.naturalHeight || image.height : 0;
+    const mediaWidth = image ? Math.min(190, maxBubbleWidth - 22) : 0;
+    const mediaHeight = imageWidth && imageHeight ? Math.min(170, Math.max(86, mediaWidth * (imageHeight / imageWidth))) : 0;
     const lines = wrapCanvasText(measureCtx, text, isSystem ? width - padding * 4 : maxBubbleWidth);
-    const imageHeight = message.type === "image" && message.dataUrl ? 150 : 0;
-    const height = isSystem ? Math.max(30, lines.length * 21 + 10) : Math.max(48, lines.length * 21 + 20 + imageHeight);
-    return { message, text, lines, isSystem, height };
-  });
+    const imageGap = image && lines.length ? 7 : 0;
+    const height = isSystem
+      ? Math.max(30, lines.length * 21 + 10)
+      : Math.max(48, lines.length * 21 + 20 + mediaHeight + imageGap);
+    return { message, text, lines, isSystem, image, mediaWidth, mediaHeight, imageGap, height };
+  }));
+  const [backgroundImage, userAvatarImage, roleAvatarImage] = await Promise.all([
+    loadCanvasImage(role.chatBackground),
+    loadCanvasImage(settings.userAvatar || DEFAULT_USER_AVATAR),
+    loadCanvasImage(role.avatar || DEFAULT_ROLE_AVATAR),
+  ]);
   const height = 88 + rows.reduce((sum, row) => sum + row.height + 14, 0) + 28;
   const canvas = document.createElement("canvas");
   canvas.width = width * 2;
   canvas.height = height * 2;
   const ctx = canvas.getContext("2d");
   ctx.scale(2, 2);
-  ctx.fillStyle = "#ededed";
-  ctx.fillRect(0, 0, width, height);
+  if (backgroundImage) {
+    drawCoverImage(ctx, backgroundImage, 0, 0, width, height);
+    ctx.fillStyle = "rgba(237, 237, 237, 0.46)";
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    ctx.fillStyle = "#ededed";
+    ctx.fillRect(0, 0, width, height);
+  }
   ctx.fillStyle = "#111";
   ctx.font = "600 17px sans-serif";
   ctx.textAlign = "center";
@@ -1431,7 +1499,7 @@ async function renderSelectedMessagesImage() {
       continue;
     }
 
-    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, ...lines.map((line) => ctx.measureText(line).width)) + 22);
+    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, row.mediaWidth || 0, ...lines.map((line) => ctx.measureText(line).width)) + 22);
     const bubbleX = isUser ? width - padding - bubbleWidth : padding + avatarSize + 8;
     const avatarX = isUser ? width - padding - avatarSize : padding;
     ctx.fillStyle = isUser ? "#95ec69" : "#fff";
@@ -1440,10 +1508,15 @@ async function renderSelectedMessagesImage() {
     ctx.fillStyle = "#d8d8d8";
     roundRectPath(ctx, avatarX, y, avatarSize, avatarSize, 7);
     ctx.fill();
+    drawRoundedCoverImage(ctx, isUser ? userAvatarImage : roleAvatarImage, avatarX, y, avatarSize, avatarSize, 7);
     ctx.fillStyle = "#111";
     ctx.font = "15px sans-serif";
     ctx.textAlign = "left";
     lines.forEach((line, index) => ctx.fillText(line, bubbleX + 11, y + 22 + index * 21));
+    if (row.image) {
+      const imageY = y + 10 + lines.length * 21 + row.imageGap;
+      drawRoundedCoverImage(ctx, row.image, bubbleX + 11, imageY, row.mediaWidth, row.mediaHeight, 5);
+    }
     y += row.height + 14;
   }
 
@@ -1679,7 +1752,7 @@ async function regenerateReplyTurn(messageId) {
 function checkProactiveBanner() {
   const settings = getSettings();
   const lastOpenAt = getLastOpenAt();
-  if (!settings.allowProactiveMessage || !lastOpenAt) {
+  if (getRole().isBlocked || !settings.allowProactiveMessage || !lastOpenAt) {
     els.proactiveBanner.classList.add("hidden");
     return;
   }
@@ -1694,6 +1767,11 @@ function checkProactiveBanner() {
 
 async function createProactiveMessage() {
   const settings = getSettings();
+  if (getRole().isBlocked) {
+    toast("已加入黑名单，对方不会主动打扰");
+    closeAttachPanel();
+    return;
+  }
   if (!settings.allowProactiveMessage) {
     toast("先在“我”里打开允许主动消息");
     closeAttachPanel();
@@ -1765,6 +1843,7 @@ function saveRoleFromForm(event) {
     description: els.roleDescInput.value,
     isPinned: existing?.isPinned,
     isBlocked: existing?.isBlocked,
+    chatBackground: existing?.chatBackground,
     createdAt: existing?.createdAt,
   });
   setCurrentRoleId(role.id);
@@ -1885,6 +1964,7 @@ function maybeGenerateOfflineUnread() {
   const roles = getRoles();
   const current = getCurrentRoleId();
   for (const role of roles) {
+    if (role.isBlocked) continue;
     if (role.id !== current) setUnread(role.id, Math.max(getUnread()[role.id] || 0, 1));
   }
 }
@@ -1955,6 +2035,7 @@ function bindEvents() {
   els.regenerateBtn.addEventListener("click", regenerateLastReply);
   els.proactiveTalkBtn.addEventListener("click", createProactiveMessage);
   els.patBtn.addEventListener("click", () => createPatMessage("user"));
+  els.rolePatBtn.addEventListener("click", () => createPatMessage("role"));
   els.imageAttachInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1978,9 +2059,28 @@ function bindEvents() {
   els.blockChatInput.addEventListener("change", () => {
     const role = getRole();
     saveRole({ ...role, isBlocked: els.blockChatInput.checked });
+    if (els.blockChatInput.checked) setUnread(role.id, 0);
     renderChatInfo();
     renderChatList();
     toast(els.blockChatInput.checked ? "已加入黑名单" : "已移出黑名单");
+  });
+  els.changeChatBgBtn.addEventListener("click", () => els.chatBgInput.click());
+  els.chatBgInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const role = getRole();
+    saveRole({ ...role, chatBackground: await readFileAsDataURL(file) });
+    renderChatInfo();
+    renderChatDetail();
+    toast("聊天背景已更换");
+  });
+  els.clearChatBgBtn.addEventListener("click", () => {
+    const role = getRole();
+    saveRole({ ...role, chatBackground: "" });
+    renderChatInfo();
+    renderChatDetail();
+    toast("已恢复默认聊天背景");
   });
   $("#addMemoryBtn").addEventListener("click", () => {
     const text = els.newMemoryInput.value.trim();
