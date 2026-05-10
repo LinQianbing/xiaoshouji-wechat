@@ -883,6 +883,110 @@ function appendTyping() {
   return typing;
 }
 
+function appendRecallStatus() {
+  const status = document.createElement("div");
+  status.className = "message-row system recall-status";
+  status.innerHTML = `<div class="system-bubble">对方正在翻旧账中......</div>`;
+  els.messageList.appendChild(status);
+  els.messageList.scrollTop = els.messageList.scrollHeight;
+  return status;
+}
+
+function normalizeSearchText(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s\u4e00-\u9fff]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractRecallKeywords(text = "") {
+  const raw = String(text);
+  const quoted = Array.from(raw.matchAll(/[“"']([^“"']{2,30})[”"']/g)).map((match) => match[1]);
+  const subjectMatches = Array.from(
+    raw.matchAll(/(?:说|提过|聊过|关于|关键词|查一下|查下|查|找一下|找下|找)([^，。？！?]{2,24}?)(?:是|在|的|什么时候|哪天|几点|吗|呢|呀|啊|，|。|？|\?|$)/g),
+  )
+    .map((match) => match[1].replace(/^(过|了|一下|下|找|查|说)/, "").trim())
+    .filter(Boolean);
+  const normalized = normalizeSearchText(raw);
+  const stopwords = new Set([
+    "之前",
+    "以前",
+    "上次",
+    "刚才",
+    "记得",
+    "记不记得",
+    "有没有",
+    "是不是",
+    "什么",
+    "时候",
+    "时间",
+    "哪天",
+    "聊天",
+    "记录",
+    "说过",
+    "说了",
+    "提过",
+    "我们",
+    "你",
+    "我",
+    "的",
+    "了",
+    "吗",
+    "呢",
+    "啊",
+    "呀",
+    "帮我",
+    "查找",
+    "找找",
+    "翻翻",
+  ]);
+  const tokens = normalized
+    .split(/\s+/)
+    .flatMap((part) => {
+      if (/^[a-z0-9]+$/i.test(part)) return [part];
+      const chunks = part.match(/[\u4e00-\u9fff]{2,8}|[a-z0-9]{2,}/gi) || [];
+      return chunks.length ? chunks : [part];
+    })
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && !stopwords.has(item));
+  return [...new Set([...quoted, ...subjectMatches, ...tokens])].slice(0, 10);
+}
+
+function shouldRecallChatHistory(text = "") {
+  return /之前|以前|上次|刚才|记得|记不记得|说过|聊过|提过|哪天|什么时候|几点|翻旧账|查(一下|下)?|找(一下|下)?|关键词|聊天记录|历史记录/.test(
+    text,
+  );
+}
+
+function searchChatHistory(roleId, userText, options = {}) {
+  if (!shouldRecallChatHistory(userText)) return [];
+  const keywords = extractRecallKeywords(userText);
+  if (!keywords.length) return [];
+  const excludedIds = new Set(options.excludeIds || []);
+  const messages = getChats(roleId);
+  const hits = [];
+  for (const message of messages) {
+    if (!message.content || message.isRevoked || excludedIds.has(message.id)) continue;
+    const haystack = normalizeSearchText(message.content);
+    const matched = keywords.filter((keyword) => haystack.includes(normalizeSearchText(keyword)));
+    if (!matched.length) continue;
+    hits.push({
+      id: message.id,
+      sender: message.sender,
+      type: message.type || "text",
+      content: message.content,
+      createdAt: message.createdAt,
+      matchedKeywords: matched,
+      score: matched.length * 10 + Math.min(4, message.content.length / 20),
+    });
+  }
+  return hits
+    .sort((a, b) => b.score - a.score || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
 function buildRegenerationPlan(messages, messageId) {
   const selectedIndex = messages.findIndex((msg) => msg.id === messageId);
   if (selectedIndex < 0) return null;
@@ -1225,7 +1329,21 @@ async function renderSelectedMessagesImage() {
   showDialog(els.shotDialog);
 }
 
-async function appendModelReply({ role, roleId, settings, mode, userText, recentMessages }) {
+async function appendModelReply({
+  role,
+  roleId,
+  settings,
+  mode,
+  userText,
+  recentMessages,
+  recalledMessages = [],
+  recallTriggered = false,
+  recallStatus = null,
+}) {
+  if (recallTriggered || recalledMessages.length) {
+    recallStatus ||= appendRecallStatus();
+    await delay(900);
+  }
   const typing = appendTyping();
   try {
     const replyGroupId = createId("reply");
@@ -1236,8 +1354,10 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
       mode,
       memories: getMemories(roleId),
       recentMessages,
+      recalledMessages,
       userText,
     });
+    recallStatus?.remove();
     typing.remove();
     for (let index = 0; index < reply.messages.length; index += 1) {
       const message = reply.messages[index];
@@ -1260,6 +1380,7 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
     renderChatList();
     return true;
   } catch (error) {
+    recallStatus?.remove();
     typing.remove();
     handleApiError(error);
     renderMessages();
@@ -1298,17 +1419,24 @@ async function sendMessage() {
   }
   els.messageInput.value = "";
   autoResizeInput();
-  addChat(roleId, { sender: "user", content: text, mode });
+  const sentMessage = addChat(roleId, { sender: "user", content: text, mode });
+  const recentMessages = getChats(roleId).slice(-18);
+  const recallTriggered = shouldRecallChatHistory(text);
+  const recalledMessages = searchChatHistory(roleId, text, { excludeIds: [sentMessage.id] });
   renderMessages();
   renderChatList();
+  const recallStatus = recallTriggered ? appendRecallStatus() : null;
 
   queueModelReply({
-      role,
-      roleId,
-      settings,
-      mode,
-      recentMessages: getChats(roleId).slice(-18),
-      userText: text,
+    role,
+    roleId,
+    settings,
+    mode,
+    recentMessages,
+    recalledMessages,
+    recallTriggered,
+    recallStatus,
+    userText: text,
   });
 }
 
@@ -1323,7 +1451,7 @@ async function sendLocalAttachment(file, type) {
   const dataUrl = isImage ? await readFileAsDataURL(file) : "";
 
   closeAttachPanel();
-  addChat(roleId, {
+  const sentMessage = addChat(roleId, {
     sender: "user",
     type,
     content,
@@ -1332,16 +1460,23 @@ async function sendLocalAttachment(file, type) {
     dataUrl,
     mode,
   });
+  const recentMessages = getChats(roleId).slice(-18);
+  const recallTriggered = shouldRecallChatHistory(content);
+  const recalledMessages = searchChatHistory(roleId, content, { excludeIds: [sentMessage.id] });
   renderMessages();
   renderChatList();
+  const recallStatus = recallTriggered ? appendRecallStatus() : null;
 
   queueModelReply({
-      role,
-      roleId,
-      settings,
-      mode,
-      recentMessages: getChats(roleId).slice(-18),
-      userText: content,
+    role,
+    roleId,
+    settings,
+    mode,
+    recentMessages,
+    recalledMessages,
+    recallTriggered,
+    recallStatus,
+    userText: content,
   });
 }
 

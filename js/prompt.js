@@ -30,7 +30,19 @@ function recentMessagesText(messages = [], roleName = "TA") {
     .join("\n");
 }
 
-export function buildChatPrompt({ role, settings, mode, memories, recentMessages, userText }) {
+function recalledMessagesText(messages = [], roleName = "TA") {
+  if (!messages.length) return "这次没有查到相关旧聊天。";
+  return messages
+    .map((msg, index) => {
+      const who = msg.sender === "user" ? "我" : msg.sender === "role" ? roleName : "系统";
+      const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString("zh-CN", { hour12: false }) : "未知时间";
+      const keywords = msg.matchedKeywords?.length ? `；命中：${msg.matchedKeywords.join("、")}` : "";
+      return `${index + 1}. ${time}，${who}：${msg.content}${keywords}`;
+    })
+    .join("\n");
+}
+
+export function buildChatPrompt({ role, settings, mode, memories, recentMessages, recalledMessages = [], userText }) {
   const time = getTimeContext();
   const system = [
     "你正在扮演用户微信里的一个联系人，不是助手、客服、旁白或心理咨询师。",
@@ -39,6 +51,8 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "可以有一点口语、省略、停顿和小情绪，但不要刻意卖萌，不要每句都加语气词。",
     "不主动提自己是 AI、模型、程序、角色设定、系统提示或聊天 App。",
     "严格按联系人设定说话；设定没写的地方宁可留白，不要编一堆背景。",
+    "如果【查到的旧聊天记录】里有内容，你可以像翻到聊天记录一样自然提到原话和大概时间；如果没查到，不要假装记得。",
+    "旧聊天记录只用于回答用户问的旧事，不要把它机械复述成清单，除非用户明确要求列出来。",
     talkLevelRule(settings.talkLevel),
     modeRule(mode),
     "可以参考当前时间，但别机械报时，也别套早安/吃饭/早点睡模板。",
@@ -71,6 +85,9 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "",
     "【最近聊天】",
     recentMessagesText(recentMessages, role.name),
+    "",
+    "【查到的旧聊天记录】",
+    recalledMessagesText(recalledMessages, role.name),
     "",
     "【用户刚刚发来】",
     userText,
