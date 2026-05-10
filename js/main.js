@@ -30,7 +30,7 @@ import {
   updateChat,
 } from "./storage.js?v=2";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=4";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=5";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
@@ -1623,6 +1623,21 @@ function wantsRolePat(text = "") {
   return /(?:拍(?:拍|一拍)?我|拍拍我|主动拍|怎么不拍|为什么不拍|不拍我)/.test(String(text));
 }
 
+function shouldAutoRolePat({ roleId, userText = "", recentMessages = [], proactive = false }) {
+  const messages = getChats(roleId);
+  const lastRolePat = [...messages].reverse().find((message) => message.type === "pat" && message.patActor === "role");
+  if (lastRolePat && Date.now() - new Date(lastRolePat.createdAt).getTime() < 1000 * 60 * 25) return false;
+  if (messages.slice(-8).some((message) => message.type === "pat" && message.patActor === "role")) return false;
+
+  const text = String(userText || "");
+  if (wantsRolePat(text)) return true;
+
+  const lastSender = recentMessages[recentMessages.length - 1]?.sender || "";
+  const intimateCue = /想你|想我|在吗|陪我|理我|抱|睡|晚安|早安|累|难过|委屈|生气|害怕|开心|撒娇|回来|别走/.test(text);
+  const threshold = proactive ? 0.42 : intimateCue ? 0.28 : lastSender === "user" ? 0.14 : 0.08;
+  return Math.random() < threshold;
+}
+
 function wrapCanvasText(ctx, text, maxWidth) {
   const lines = [];
   for (const paragraph of String(text || "").split("\n")) {
@@ -2135,6 +2150,7 @@ async function appendModelReply({
   recalledRange = null,
   recallTriggered = false,
   recallStatus = null,
+  proactive = false,
 }) {
   if (recallTriggered || recalledMessages.length) {
     recallStatus ||= appendRecallStatus(recalledRange);
@@ -2170,7 +2186,7 @@ async function appendModelReply({
       renderMessages();
       renderChatList();
     }
-    if (reply.shouldPat || wantsRolePat(userText)) {
+    if (reply.shouldPat || shouldAutoRolePat({ roleId, userText, recentMessages, proactive })) {
       await delay(420);
       addPatChat(roleId, "role", role, settings);
       renderMessages();
@@ -2402,6 +2418,7 @@ async function createProactiveMessage() {
       roleId,
       recentMessages: getChats(roleId).slice(-18),
       userText,
+      proactive: true,
     });
   } finally {
     state.sending = false;
@@ -2572,6 +2589,13 @@ function maybeGenerateOfflineUnread() {
   const roles = getRoles();
   const current = getCurrentRoleId();
   for (const role of roles) {
+    const didPat = shouldAutoRolePat({
+      roleId: role.id,
+      userText: "你隔了一段时间主动找用户回来。",
+      recentMessages: getChats(role.id).slice(-18),
+      proactive: true,
+    });
+    if (didPat) addPatChat(role.id, "role", role, settings);
     if (role.id !== current) setUnread(role.id, Math.max(getUnread()[role.id] || 0, 1));
   }
 }

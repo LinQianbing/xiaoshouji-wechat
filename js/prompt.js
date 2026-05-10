@@ -72,6 +72,7 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "如果【聊天状态】显示你被用户拉黑，你知道这件事，但仍然可以发消息；可以表现出着急、委屈、试探或想解释，不要假装什么都没发生。",
     "如果最近聊天里出现拍一拍动作，你能知道是谁拍了谁；你可以把 shouldPat 设为 true 主动拍一拍用户，但不要频繁使用。",
     "如果用户明确说想被你拍、问你为什么不拍、要求你主动拍一拍，必须把 shouldPat 设为 true。",
+    "在亲近、安慰、撒娇、叫用户回来、主动开场、想引起注意时，可以偶尔 shouldPat true，不需要等用户先要求。",
     "如果这次是你主动找用户说话，可以选择 shouldPat true 作为微信里的拍一拍开场，再发一两句自然短消息。",
     talkLevelRule(settings.talkLevel),
     modeRule(mode),
