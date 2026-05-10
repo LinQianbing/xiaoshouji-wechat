@@ -106,10 +106,10 @@ export async function generateChatReply(payload) {
   if (!isApiReady(settings)) throw new ApiNotConfiguredError();
 
   const prompt = buildChatPrompt(payload);
-  const raw = await callChatCompletions(settings, prompt, 1.15);
+  const raw = await callChatCompletions(settings, prompt, 0.95);
   const parsed = extractJSON(raw);
   return {
-    messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).slice(0, 6) : [String(parsed.message || "嗯嗯，我在。")],
+    messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).slice(0, 8) : [String(parsed.message || "嗯嗯，我在。")],
     mood: parsed.mood || "normal",
     shouldPat: Boolean(parsed.shouldPat),
     shouldRemember: Boolean(parsed.shouldRemember),
