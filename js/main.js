@@ -607,6 +607,7 @@ function openApiSettings() {
   closeDialog(els.roleDialog);
   switchTab("me");
   requestAnimationFrame(() => {
+    els.apiKeyInput?.closest("details")?.setAttribute("open", "open");
     els.apiKeyInput?.focus();
     els.apiKeyInput?.scrollIntoView({ block: "center", behavior: "smooth" });
   });

@@ -10,7 +10,7 @@
     <title>小手机 MVP</title>
     <link rel="manifest" href="manifest.webmanifest?v=10" />
     <link rel="apple-touch-icon" href="assets/pwa/icon-180.png?v=10" />
-    <link rel="stylesheet" href="css/style.css?v=16" />
+    <link rel="stylesheet" href="css/style.css?v=17" />
     <link rel="stylesheet" href="css/moments-wechat-fix.css?v=2" />
   </head>
   <body>
@@ -199,15 +199,15 @@
               </div>
             </section>
 
-            <section class="settings-group">
-              <h2>我的人设</h2>
+            <details class="settings-group settings-panel">
+              <summary>个人设定</summary>
               <label class="setting-area">
                 <textarea id="userPersonaInput" rows="5" placeholder="写你的身份、关系、性格、说话习惯，角色会在回复时参考。"></textarea>
               </label>
-            </section>
+            </details>
 
-            <section class="settings-group">
-              <h2>AI 设置</h2>
+            <details class="settings-group settings-panel">
+              <summary>AI 设置</summary>
               <label class="setting-row">
                 <span>API Key</span>
                 <input id="apiKeyInput" type="password" placeholder="只保存在本地" />
@@ -225,10 +225,10 @@
                 <span>接口地址</span>
                 <input id="apiBaseInput" type="text" placeholder="OpenAI-compatible URL" />
               </label>
-            </section>
+            </details>
 
-            <section class="settings-group">
-              <h2>聊天体验</h2>
+            <details class="settings-group settings-panel">
+              <summary>聊天体验</summary>
               <label class="setting-row">
                 <span>默认模式</span>
                 <select id="defaultModeSelect">
@@ -256,10 +256,10 @@
                 <span>允许朋友圈生成</span>
                 <input id="allowMomentsInput" type="checkbox" />
               </label>
-            </section>
+            </details>
 
-            <section class="settings-group danger-zone">
-              <h2>数据</h2>
+            <details class="settings-group settings-panel danger-zone">
+              <summary>数据与备份</summary>
               <button class="plain-row" id="exportDataBtn" type="button">导出数据</button>
               <label class="plain-row file-row">
                 导入数据
@@ -267,13 +267,13 @@
               </label>
               <button class="plain-row" id="clearChatBtn" type="button">清空当前联系人聊天记录</button>
               <button class="plain-row" id="clearMemoryBtn" type="button">清空当前联系人记忆</button>
-            </section>
+            </details>
 
-            <section class="settings-group about-card">
-              <h2>关于小手机</h2>
+            <details class="settings-group settings-panel about-card">
+              <summary>关于小手机</summary>
               <button class="plain-row" id="installPwaBtn" type="button">安装到桌面</button>
               <p>这是一个本地网页 App。联系人、聊天、朋友圈和记忆都保存在浏览器 localStorage 里，不上传用户数据。</p>
-            </section>
+            </details>
           </div>
         </section>
 
@@ -355,7 +355,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=21"></script>
+    <script type="module" src="js/main.js?v=22"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;
