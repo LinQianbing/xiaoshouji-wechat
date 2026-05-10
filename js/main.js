@@ -2,7 +2,6 @@ import {
   DEFAULT_ROLE_AVATAR,
   DEFAULT_USER_AVATAR,
   addChat,
-  addMemory,
   clearChats,
   clearMemories,
   createId,
@@ -32,7 +31,7 @@ import {
 } from "./storage.js";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
 import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js";
-import { summarizeRecentChatToMemory } from "./memory.js";
+import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
   commentMoment,
@@ -896,6 +895,7 @@ function renderMemoryEditList() {
     .map(
       (item) => `
         <article class="memory-edit-item" data-memory-id="${item.id}">
+          <p class="memory-meta">${memoryCategoryLabel(item.category)} · 重要度${item.importance ?? 3} · 情绪${item.emotionWeight ?? 3}</p>
           <textarea rows="3">${escapeHTML(item.content)}</textarea>
           <button type="button">删除</button>
         </article>
@@ -1477,7 +1477,7 @@ async function appendModelReply({
       role,
       settings,
       mode,
-      memories: getMemories(roleId),
+      memories: selectRelevantMemories(getMemories(roleId), userText, recentMessages),
       recentMessages,
       recalledMessages,
       recalledRange,
@@ -1500,9 +1500,8 @@ async function appendModelReply({
       renderChatList();
     }
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
-      addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
+      rememberText(roleId, reply.memoryCandidate, 4, 4, { source: "chat", confidence: 0.72 });
     }
-    renderChatDetail();
     renderChatList();
     return true;
   } catch (error) {
@@ -1986,7 +1985,7 @@ function bindEvents() {
   $("#addMemoryBtn").addEventListener("click", () => {
     const text = els.newMemoryInput.value.trim();
     if (!text) return toast("先写一条希望对方记住的事");
-    addMemory(getCurrentRoleId(), { content: text, importance: 5, emotionWeight: 5 });
+    rememberText(getCurrentRoleId(), text, 5, 5, { source: "manual", confidence: 1 });
     els.newMemoryInput.value = "";
     renderMemoryEditList();
     toast("已添加记忆");

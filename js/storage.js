@@ -223,13 +223,17 @@ export function addMemory(roleId, memory) {
   const normalized = {
     id: memory.id || uid("memory"),
     roleId,
-    content: memory.content,
+    content: String(memory.content || "").trim(),
+    category: memory.category || "other",
+    keywords: Array.isArray(memory.keywords) ? memory.keywords.slice(0, 8) : [],
+    confidence: Number(memory.confidence ?? 0.7),
     importance: Number(memory.importance ?? 3),
     emotionWeight: Number(memory.emotionWeight ?? 3),
     createdAt: memory.createdAt || nowISO(),
+    source: memory.source || "manual",
     updatedAt: nowISO(),
   };
-  setMemories(roleId, [normalized, ...items].slice(0, 50));
+  setMemories(roleId, [normalized, ...items].slice(0, 60));
   return normalized;
 }
 

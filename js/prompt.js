@@ -17,8 +17,12 @@ function modeRule(mode) {
 function memoryText(memories = []) {
   if (!memories.length) return "暂无长期记忆。你不能假装一开始就很了解用户，要通过聊天慢慢了解。";
   return memories
-    .slice(0, 12)
-    .map((item, index) => `${index + 1}. ${item.content}（重要度${item.importance ?? 3}，情绪权重${item.emotionWeight ?? 3}）`)
+    .slice(0, 10)
+    .map((item, index) => {
+      const category = item.category && item.category !== "other" ? `，分类${item.category}` : "";
+      const relevance = item.relevance ? `，相关度${item.relevance.toFixed(2)}` : "";
+      return `${index + 1}. ${item.content}（重要度${item.importance ?? 3}，情绪权重${item.emotionWeight ?? 3}${category}${relevance}）`;
+    })
     .join("\n");
 }
 
@@ -131,7 +135,7 @@ export function buildMomentPrompt({ role, settings, recentMessages, memories }) 
   ];
 }
 
-export function buildMemoryPrompt({ role, recentMessages }) {
+export function buildMemoryPrompt({ role, recentMessages, existing = [] }) {
   return [
     {
       role: "system",
@@ -139,13 +143,21 @@ export function buildMemoryPrompt({ role, recentMessages }) {
         "你要把最近聊天整理成类人长期记忆。",
         "不要流水账，不要复制整段聊天。只保留重要、情绪强、未来会影响角色理解用户的事。",
         "普通日常只保留模糊印象。",
-        "输出 JSON：{\"memories\":[{\"content\":\"简短记忆\",\"importance\":3,\"emotionWeight\":3}]}",
+        "如果新内容和已有记忆重复，要输出合并后的更准确版本，不要重复新增。",
+        "分类只能用 profile、preference、relationship、event、promise、boundary、emotion、habit、other。",
+        "输出 JSON：{\"memories\":[{\"content\":\"简短记忆\",\"category\":\"preference\",\"importance\":3,\"emotionWeight\":3,\"confidence\":0.8}]}",
         "如果没有值得记住的内容，memories 输出空数组。",
       ].join("\n"),
     },
     {
       role: "user",
-      content: [`角色：${role.name}`, "最近聊天：", recentMessagesText(recentMessages, role.name).slice(0, 1800)].join("\n"),
+      content: [
+        `角色：${role.name}`,
+        "已有长期记忆：",
+        memoryText(existing).slice(0, 1200),
+        "最近聊天：",
+        recentMessagesText(recentMessages, role.name).slice(0, 1800),
+      ].join("\n"),
     },
   ];
 }

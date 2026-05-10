@@ -1731,6 +1731,12 @@ input[type="range"] {
   border-bottom: 1px solid var(--line);
 }
 
+.memory-meta {
+  margin: 0 0 7px;
+  color: #999;
+  font-size: 12px;
+}
+
 .memory-edit-item button {
   margin-top: 7px;
   border: 0;
