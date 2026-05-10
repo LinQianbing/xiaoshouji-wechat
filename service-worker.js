@@ -1,9 +1,9 @@
-const CACHE_NAME = "xiaoshouji-pwa-v14";
+const CACHE_NAME = "xiaoshouji-pwa-v15";
 
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./manifest.webmanifest?v=9",
+  "./manifest.webmanifest?v=10",
   "./css/style.css?v=11",
   "./js/ai.js",
   "./js/main.js?v=12",
@@ -14,11 +14,11 @@ const APP_SHELL = [
   "./js/time.js",
   "./assets/avatar/default-role.svg",
   "./assets/avatar/default-user.svg",
-  "./assets/pwa/icon-180.png?v=8",
-  "./assets/pwa/icon-192.png?v=8",
-  "./assets/pwa/icon-512.png?v=8",
-  "./assets/pwa/icon-maskable-192.png?v=9",
-  "./assets/pwa/icon-maskable-512.png?v=9"
+  "./assets/pwa/icon-180.png?v=10",
+  "./assets/pwa/icon-192.png?v=10",
+  "./assets/pwa/icon-512.png?v=10",
+  "./assets/pwa/icon-maskable-192.png?v=10",
+  "./assets/pwa/icon-maskable-512.png?v=10"
 ];
 
 self.addEventListener("install", (event) => {
@@ -35,6 +35,10 @@ self.addEventListener("activate", (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
