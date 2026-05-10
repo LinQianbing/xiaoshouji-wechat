@@ -8,17 +8,17 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#ededed",
-  "theme_color": "#07c160",
+  "background_color": "#f1faff",
+  "theme_color": "#f1faff",
   "icons": [
     {
-      "src": "assets/pwa/icon-192.png?v=7",
+      "src": "assets/pwa/icon-192.png?v=8",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "assets/pwa/icon-512.png?v=7",
+      "src": "assets/pwa/icon-512.png?v=8",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

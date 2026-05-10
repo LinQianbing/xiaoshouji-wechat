@@ -1,9 +1,9 @@
-const CACHE_NAME = "xiaoshouji-pwa-v10";
+const CACHE_NAME = "xiaoshouji-pwa-v11";
 
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./manifest.webmanifest?v=7",
+  "./manifest.webmanifest?v=8",
   "./css/style.css?v=9",
   "./js/ai.js",
   "./js/main.js?v=10",
@@ -14,9 +14,9 @@ const APP_SHELL = [
   "./js/time.js",
   "./assets/avatar/default-role.svg",
   "./assets/avatar/default-user.svg",
-  "./assets/pwa/icon-180.png?v=7",
-  "./assets/pwa/icon-192.png?v=7",
-  "./assets/pwa/icon-512.png?v=7"
+  "./assets/pwa/icon-180.png?v=8",
+  "./assets/pwa/icon-192.png?v=8",
+  "./assets/pwa/icon-512.png?v=8"
 ];
 
 self.addEventListener("install", (event) => {
