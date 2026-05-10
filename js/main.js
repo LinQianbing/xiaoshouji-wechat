@@ -6,6 +6,7 @@ import {
   clearChats,
   clearMemories,
   createId,
+  deleteChats,
   deleteRole,
   exportAllData,
   getChats,
@@ -27,11 +28,21 @@ import {
   setLastOpenAt,
   setMemories,
   setUnread,
+  updateChat,
 } from "./storage.js";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
 import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js";
 import { summarizeRecentChatToMemory } from "./memory.js";
-import { commentMoment, createMomentForRole, getAllMoments, likeMoment } from "./moments.js";
+import {
+  USER_MOMENTS_ID,
+  commentMoment,
+  createMomentForRole,
+  createUserMoment,
+  deleteMoment,
+  getAllMoments,
+  likeMoment,
+  updateUserMoment,
+} from "./moments.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -42,9 +53,19 @@ const state = {
   profileRoleId: null,
   startChatAfterSave: false,
   sending: false,
+  replying: false,
+  replyQueue: Promise.resolve(),
+  editingMessageId: null,
+  selectedMessageIds: new Set(),
+  isSelectingMessages: false,
+  momentActionMenu: null,
+  editingMomentId: null,
+  momentImages: [],
+  momentLongPressTimer: null,
   installPromptEvent: null,
   longPressTimer: null,
   messageActionMenu: null,
+  chatActionMenu: null,
 };
 
 const els = {
@@ -75,6 +96,7 @@ const els = {
   attachFileBtn: $("#attachFileBtn"),
   regenerateBtn: $("#regenerateBtn"),
   proactiveTalkBtn: $("#proactiveTalkBtn"),
+  patBtn: $("#patBtn"),
   toast: $("#toast"),
 
   roleDialog: $("#roleDialog"),
@@ -122,6 +144,107 @@ const els = {
   installPwaBtn: $("#installPwaBtn"),
 };
 
+function ensureRuntimeUI() {
+  if (!$("#editMessageBar")) {
+    $(".input-bar").insertAdjacentHTML(
+      "beforebegin",
+      `<div class="edit-message-bar hidden" id="editMessageBar">
+        <span>正在编辑</span>
+        <button id="cancelEditMessageBtn" type="button">取消</button>
+      </div>`,
+    );
+  }
+  if (!$("#messageSelectBar")) {
+    $(".input-bar").insertAdjacentHTML(
+      "beforebegin",
+      `<div class="message-select-bar hidden" id="messageSelectBar">
+        <button id="cancelSelectMessagesBtn" type="button">取消</button>
+        <span id="selectedMessageCount">已选择 0 条</span>
+        <button id="deleteSelectedMessagesBtn" type="button">删除</button>
+        <button id="shotSelectedMessagesBtn" type="button">截图</button>
+      </div>`,
+    );
+  }
+  if (!$("#momentDialog")) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<dialog class="sheet-dialog" id="momentDialog">
+        <form method="dialog" class="moment-sheet" id="momentForm">
+          <header>
+            <button value="cancel" type="button" id="closeMomentDialogBtn">取消</button>
+            <strong id="momentDialogTitle">发朋友圈</strong>
+            <button value="default" type="submit">发表</button>
+          </header>
+          <div class="moment-editor-body">
+            <textarea id="momentTextInput" rows="6" placeholder="这一刻的想法..."></textarea>
+            <div class="moment-image-grid" id="momentImageList"></div>
+            <label class="moment-add-image">
+              <input id="momentImageInput" type="file" accept="image/*" multiple hidden />
+              <span>+</span>
+            </label>
+            <label class="setting-row moment-option">
+              <span>所在位置</span>
+              <input id="momentLocationInput" type="text" placeholder="不显示位置" />
+            </label>
+            <label class="setting-row moment-option">
+              <span>谁可以看</span>
+              <select id="momentVisibilitySelect">
+                <option value="public">公开</option>
+                <option value="private">仅自己可见</option>
+              </select>
+            </label>
+            <label class="setting-row moment-option">
+              <span>提醒谁看</span>
+              <input id="momentMentionsInput" type="text" placeholder="输入联系人名，用逗号分隔" />
+            </label>
+          </div>
+        </form>
+      </dialog>
+      <dialog class="sheet-dialog" id="momentChoiceDialog">
+        <div class="menu-sheet">
+          <button id="writeMomentBtn" type="button">发朋友圈</button>
+          <button id="writeTextMomentBtn" type="button">写想法</button>
+          <button id="aiMomentBtn" type="button">让当前联系人发一条</button>
+          <button id="closeMomentChoiceBtn" type="button">取消</button>
+        </div>
+      </dialog>
+      <dialog class="sheet-dialog" id="shotDialog">
+        <div class="shot-sheet">
+          <header>
+            <button type="button" id="closeShotDialogBtn">完成</button>
+            <strong>聊天截图</strong>
+            <a id="downloadShotLink" download="xiaoshouji-chat.png">保存</a>
+          </header>
+          <div class="shot-preview-wrap"><img id="shotPreview" alt="聊天截图预览" /></div>
+        </div>
+      </dialog>`,
+    );
+  }
+
+  Object.assign(els, {
+    editMessageBar: $("#editMessageBar"),
+    cancelEditMessageBtn: $("#cancelEditMessageBtn"),
+    messageSelectBar: $("#messageSelectBar"),
+    selectedMessageCount: $("#selectedMessageCount"),
+    cancelSelectMessagesBtn: $("#cancelSelectMessagesBtn"),
+    deleteSelectedMessagesBtn: $("#deleteSelectedMessagesBtn"),
+    shotSelectedMessagesBtn: $("#shotSelectedMessagesBtn"),
+    momentDialog: $("#momentDialog"),
+    momentForm: $("#momentForm"),
+    momentDialogTitle: $("#momentDialogTitle"),
+    momentTextInput: $("#momentTextInput"),
+    momentImageInput: $("#momentImageInput"),
+    momentImageList: $("#momentImageList"),
+    momentLocationInput: $("#momentLocationInput"),
+    momentVisibilitySelect: $("#momentVisibilitySelect"),
+    momentMentionsInput: $("#momentMentionsInput"),
+    momentChoiceDialog: $("#momentChoiceDialog"),
+    shotDialog: $("#shotDialog"),
+    shotPreview: $("#shotPreview"),
+    downloadShotLink: $("#downloadShotLink"),
+  });
+}
+
 function toast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
@@ -149,7 +272,22 @@ function formatFileSize(bytes = 0) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRecentEnough(value, minutes = 2) {
+  return Date.now() - new Date(value).getTime() <= minutes * 60 * 1000;
+}
+
 function renderMessageContent(msg) {
+  if (msg.isRevoked) {
+    const canEdit = msg.sender === "user" && msg.type === "text" && msg.originalContent;
+    return `你撤回了一条消息${canEdit ? ` <button class="reedit-message" data-message-id="${msg.id}" type="button">重新编辑</button>` : ""}`;
+  }
+  if (msg.type === "pat" || msg.type === "system") {
+    return escapeHTML(msg.content);
+  }
   if (msg.type === "image" && msg.dataUrl) {
     return `
       <div class="image-message">
@@ -185,6 +323,11 @@ function toggleAttachPanel() {
 function closeMessageActionMenu() {
   state.messageActionMenu?.remove();
   state.messageActionMenu = null;
+}
+
+function closeChatActionMenu() {
+  state.chatActionMenu?.remove();
+  state.chatActionMenu = null;
 }
 
 function switchTab(tab) {
@@ -309,7 +452,58 @@ function renderChatList() {
     })
     .join("");
 
-  $$(".chat-cell").forEach((cell) => cell.addEventListener("click", () => openChat(cell.dataset.roleId)));
+  $$(".chat-cell").forEach((cell) => {
+    let chatPressTimer = null;
+    let longPressed = false;
+    cell.addEventListener("pointerdown", () => {
+      longPressed = false;
+      clearTimeout(chatPressTimer);
+      chatPressTimer = setTimeout(() => {
+        longPressed = true;
+        openChatActionMenu(cell, cell.dataset.roleId);
+      }, 560);
+    });
+    cell.addEventListener("pointerup", () => clearTimeout(chatPressTimer));
+    cell.addEventListener("pointerleave", () => clearTimeout(chatPressTimer));
+    cell.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openChatActionMenu(cell, cell.dataset.roleId);
+    });
+    cell.addEventListener("click", () => {
+      if (!longPressed) openChat(cell.dataset.roleId);
+    });
+  });
+}
+
+function openChatActionMenu(target, roleId) {
+  const role = getRole(roleId);
+  closeChatActionMenu();
+  const rect = target.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.className = "message-action-menu chat-action-menu";
+  menu.innerHTML = `
+    <button type="button" data-action="pin">${role.isPinned ? "取消置顶" : "置顶"}</button>
+    <button type="button" data-action="clear">删除该聊天</button>
+  `;
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.min(window.innerWidth - menu.offsetWidth - 12, Math.max(12, rect.right - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.max(12, rect.top + 12)}px`;
+  menu.addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.action;
+    if (!action) return;
+    closeChatActionMenu();
+    if (action === "pin") {
+      saveRole({ ...role, isPinned: !role.isPinned });
+      renderChatList();
+      toast(role.isPinned ? "已取消置顶" : "已置顶");
+    }
+    if (action === "clear" && confirm(`删除和 ${role.name} 的聊天记录？`)) {
+      clearChats(roleId);
+      renderChatList();
+      toast("聊天记录已删除");
+    }
+  });
+  state.chatActionMenu = menu;
 }
 
 function latestTime(roleId) {
@@ -375,20 +569,24 @@ function renderMoments() {
     : "";
   const moments = getAllMoments();
   if (!moments.length) {
-    els.momentsList.innerHTML = `<div class="empty-state">朋友圈还空着。<br>点右上角相机，让当前联系人发一条动态。</div>`;
+    els.momentsList.innerHTML = `<div class="empty-state">朋友圈还空着。<br>点右上角相机，发第一条朋友圈。</div>`;
     return;
   }
   els.momentsList.innerHTML = moments
     .map((item) => {
       const comments = item.comments || [];
+      const images = item.images || [];
       return `
         <article class="moment-card" data-role-id="${item.role.id}" data-moment-id="${item.id}">
           <img class="moment-avatar" src="${item.role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(item.role.name)}头像">
           <div>
-            <p class="moment-name">${escapeHTML(item.role.name)}</p>
+            <p class="moment-name">${escapeHTML(item.role.name)}${item.authorType === "user" ? '<span class="moment-self-tag">我</span>' : ""}</p>
             <div class="moment-text">${escapeHTML(item.content)}</div>
+            ${images.length ? `<div class="moment-image-wall">${images.map((image) => `<img src="${image}" alt="朋友圈图片">`).join("")}</div>` : ""}
             <div class="moment-foot">
               <time>${formatMomentTime(item.createdAt)}</time>
+              ${item.location ? `<span>${escapeHTML(item.location)}</span>` : ""}
+              ${item.visibility === "private" ? `<span>仅自己可见</span>` : ""}
               <button class="like-moment" type="button">赞 ${item.likes || ""}</button>
               <button class="comment-moment" type="button">评论</button>
             </div>
@@ -417,6 +615,127 @@ function renderMoments() {
       }
     });
   });
+  bindMomentActions();
+}
+
+function closeMomentActionMenu() {
+  state.momentActionMenu?.remove();
+  state.momentActionMenu = null;
+}
+
+function bindMomentActions() {
+  $$(".moment-card").forEach((card) => {
+    const roleId = card.dataset.roleId;
+    const momentId = card.dataset.momentId;
+    card.addEventListener("pointerdown", () => {
+      clearTimeout(state.momentLongPressTimer);
+      state.momentLongPressTimer = setTimeout(() => openMomentActionMenu(card, roleId, momentId), 560);
+    });
+    card.addEventListener("pointerup", () => clearTimeout(state.momentLongPressTimer));
+    card.addEventListener("pointerleave", () => clearTimeout(state.momentLongPressTimer));
+    card.addEventListener("pointercancel", () => clearTimeout(state.momentLongPressTimer));
+    card.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openMomentActionMenu(card, roleId, momentId);
+    });
+  });
+}
+
+function openMomentActionMenu(target, roleId, momentId) {
+  const moment = getAllMoments().find((item) => item.id === momentId && item.role.id === roleId);
+  if (!moment || moment.authorType !== "user") return;
+  closeMomentActionMenu();
+  const rect = target.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.className = "message-action-menu moment-action-menu";
+  menu.innerHTML = `
+    <button type="button" data-action="edit">重新编辑</button>
+    <button type="button" data-action="toggle">${moment.visibility === "private" ? "设为公开" : "设为私密"}</button>
+    <button type="button" data-action="delete">删除</button>
+  `;
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.min(window.innerWidth - menu.offsetWidth - 12, Math.max(12, rect.right - menu.offsetWidth))}px`;
+  menu.style.top = `${Math.max(12, rect.top + 8)}px`;
+  menu.addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.action;
+    if (!action) return;
+    closeMomentActionMenu();
+    if (action === "edit") openMomentEditor({ moment });
+    if (action === "toggle") {
+      updateUserMoment(momentId, { visibility: moment.visibility === "private" ? "public" : "private" });
+      renderMoments();
+      toast("已更新可见范围");
+    }
+    if (action === "delete" && confirm("删除这条朋友圈？")) {
+      deleteMoment(USER_MOMENTS_ID, momentId);
+      renderMoments();
+      toast("已删除");
+    }
+  });
+  state.momentActionMenu = menu;
+}
+
+function renderMomentImageList() {
+  els.momentImageList.innerHTML = state.momentImages
+    .map(
+      (image, index) => `
+      <button class="moment-image-item" data-index="${index}" type="button">
+        <img src="${image}" alt="待发布图片">
+        <span>×</span>
+      </button>
+    `,
+    )
+    .join("");
+  $$(".moment-image-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.momentImages.splice(Number(button.dataset.index), 1);
+      renderMomentImageList();
+    });
+  });
+}
+
+function openMomentEditor(options = {}) {
+  const moment = options.moment || null;
+  state.editingMomentId = moment?.id || null;
+  state.momentImages = [...(moment?.images || [])];
+  els.momentDialogTitle.textContent = moment ? "重新编辑" : options.textOnly ? "写想法" : "发朋友圈";
+  els.momentTextInput.value = moment?.content || "";
+  els.momentLocationInput.value = moment?.location || "";
+  els.momentVisibilitySelect.value = moment?.visibility || "public";
+  els.momentMentionsInput.value = (moment?.mentions || []).join("，");
+  renderMomentImageList();
+  showDialog(els.momentDialog);
+  requestAnimationFrame(() => els.momentTextInput.focus());
+}
+
+function closeMomentEditor() {
+  state.editingMomentId = null;
+  state.momentImages = [];
+  closeDialog(els.momentDialog);
+}
+
+function saveMomentFromForm(event) {
+  event.preventDefault();
+  const payload = {
+    content: els.momentTextInput.value.trim(),
+    images: [...state.momentImages],
+    visibility: els.momentVisibilitySelect.value,
+    location: els.momentLocationInput.value.trim(),
+    mentions: els.momentMentionsInput.value
+      .split(/[，,]/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  };
+  try {
+    const wasEditing = Boolean(state.editingMomentId);
+    if (state.editingMomentId) updateUserMoment(state.editingMomentId, payload);
+    else createUserMoment(payload);
+    closeMomentEditor();
+    switchTab("moments");
+    toast(wasEditing ? "朋友圈已更新" : "已发表");
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function renderMe() {
@@ -514,6 +833,7 @@ function renderMessages() {
   const messages = getChats(role.id);
   if (!messages.length) {
     els.messageList.innerHTML = `<div class="empty-state">你和 ${escapeHTML(role.name)} 还没有聊天。<br>像微信一样，直接发第一句就行。</div>`;
+    updateMessageSelectionUI();
     return;
   }
 
@@ -524,10 +844,22 @@ function renderMessages() {
       const divider = time !== lastDivider ? `<div class="time-divider">${time}</div>` : "";
       lastDivider = time;
       const isUser = msg.sender === "user";
+      const isSystem = msg.sender === "system" || msg.isRevoked || msg.type === "pat" || msg.type === "system";
       const avatar = isUser ? settings.userAvatar || DEFAULT_USER_AVATAR : role.avatar || DEFAULT_ROLE_AVATAR;
+      const selected = state.selectedMessageIds.has(msg.id);
+      if (isSystem) {
+        return `
+        ${divider}
+        <div class="message-row system ${selected ? "selected" : ""}" data-message-id="${msg.id}">
+          ${state.isSelectingMessages ? `<button class="message-check ${selected ? "checked" : ""}" type="button" aria-label="选择消息"></button>` : ""}
+          <div class="system-bubble">${renderMessageContent(msg)}</div>
+        </div>
+      `;
+      }
       return `
         ${divider}
-        <div class="message-row ${isUser ? "user" : "role"}" data-message-id="${msg.id}">
+        <div class="message-row ${isUser ? "user" : "role"} ${selected ? "selected" : ""}" data-message-id="${msg.id}">
+          ${state.isSelectingMessages ? `<button class="message-check ${selected ? "checked" : ""}" type="button" aria-label="选择消息"></button>` : ""}
           <img class="message-avatar" src="${avatar}" alt="头像">
           <div class="bubble">${renderMessageContent(msg)}</div>
         </div>
@@ -538,6 +870,7 @@ function renderMessages() {
   requestAnimationFrame(() => {
     els.messageList.scrollTop = els.messageList.scrollHeight;
   });
+  updateMessageSelectionUI();
   bindMessageLongPress();
 }
 
@@ -593,21 +926,39 @@ function buildRegenerationPlan(messages, messageId) {
 function openMessageActionMenu(target, messageId) {
   const roleId = getCurrentRoleId();
   const messages = getChats(roleId);
+  const message = messages.find((item) => item.id === messageId);
+  if (!message) return;
   const turn = buildRegenerationPlan(messages, messageId);
-  if (!turn) return;
+  const isUser = message.sender === "user";
+  const isText = message.type === "text" && !message.isRevoked;
+  const isSystem = message.sender === "system" || message.type === "pat" || message.isRevoked;
+  const buttons = [];
+  if (isText) buttons.push(`<button type="button" data-action="copy">复制</button>`);
+  if (isUser && isText) buttons.push(`<button type="button" data-action="edit">编辑</button>`);
+  if ((isUser || message.type === "pat") && !message.isRevoked && isRecentEnough(message.createdAt)) {
+    buttons.push(`<button type="button" data-action="recall">撤回</button>`);
+  }
+  if (turn) buttons.push(`<button type="button" data-action="regenerate">重新生成</button>`);
+  buttons.push(`<button type="button" data-action="select">多选</button>`);
+  buttons.push(`<button type="button" data-action="delete">删除</button>`);
+  if (!buttons.length) return;
 
   closeMessageActionMenu();
   const rect = target.getBoundingClientRect();
   const menu = document.createElement("div");
   menu.className = "message-action-menu";
-  menu.innerHTML = `<button type="button">重新生成</button>`;
+  menu.innerHTML = buttons.join("");
   document.body.appendChild(menu);
 
-  const left = Math.min(window.innerWidth - 118, Math.max(12, rect.left + rect.width / 2 - 52));
+  const left = Math.min(window.innerWidth - menu.offsetWidth - 12, Math.max(12, rect.left + rect.width / 2 - menu.offsetWidth / 2));
   const top = Math.max(12, rect.top - 46);
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
-  menu.querySelector("button").addEventListener("click", () => regenerateReplyTurn(messageId));
+  menu.addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.action;
+    if (!action) return;
+    handleMessageAction(action, messageId);
+  });
   state.messageActionMenu = menu;
 }
 
@@ -617,23 +968,261 @@ function clearLongPressTimer() {
 }
 
 function bindMessageLongPress() {
-  $$(".message-row.role .bubble").forEach((bubble) => {
-    const row = bubble.closest(".message-row");
+  $$(".message-row").forEach((row) => {
     const messageId = row?.dataset.messageId;
     if (!messageId) return;
+    const pressTarget = row.querySelector(".bubble, .system-bubble");
+    const avatar = row.querySelector(".message-avatar");
+    const reeditButton = row.querySelector(".reedit-message");
 
-    bubble.addEventListener("pointerdown", () => {
-      clearLongPressTimer();
-      state.longPressTimer = setTimeout(() => openMessageActionMenu(bubble, messageId), 560);
+    row.querySelector(".message-check")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleSelectedMessage(messageId);
     });
-    bubble.addEventListener("pointerup", clearLongPressTimer);
-    bubble.addEventListener("pointerleave", clearLongPressTimer);
-    bubble.addEventListener("pointercancel", clearLongPressTimer);
-    bubble.addEventListener("contextmenu", (event) => {
+    row.addEventListener("click", (event) => {
+      if (!state.isSelectingMessages || event.target.closest(".reedit-message")) return;
+      toggleSelectedMessage(messageId);
+    });
+    reeditButton?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startEditMessage(messageId, { useOriginal: true });
+    });
+    avatar?.addEventListener("dblclick", () => createPatMessage("user"));
+    if (!pressTarget) return;
+
+    pressTarget.addEventListener("pointerdown", () => {
+      clearLongPressTimer();
+      state.longPressTimer = setTimeout(() => openMessageActionMenu(pressTarget, messageId), 560);
+    });
+    pressTarget.addEventListener("pointerup", clearLongPressTimer);
+    pressTarget.addEventListener("pointerleave", clearLongPressTimer);
+    pressTarget.addEventListener("pointercancel", clearLongPressTimer);
+    pressTarget.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      openMessageActionMenu(bubble, messageId);
+      openMessageActionMenu(pressTarget, messageId);
     });
   });
+}
+
+function handleMessageAction(action, messageId) {
+  closeMessageActionMenu();
+  if (action === "copy") return copyMessage(messageId);
+  if (action === "edit") return startEditMessage(messageId);
+  if (action === "recall") return recallMessage(messageId);
+  if (action === "regenerate") return regenerateReplyTurn(messageId);
+  if (action === "select") return enterMessageSelection(messageId);
+  if (action === "delete") return deleteSelectedMessages([messageId]);
+}
+
+async function copyMessage(messageId) {
+  const message = getChats(getCurrentRoleId()).find((item) => item.id === messageId);
+  if (!message?.content) return;
+  try {
+    await navigator.clipboard.writeText(message.content);
+    toast("已复制");
+  } catch {
+    toast("复制失败，请手动选中文字");
+  }
+}
+
+function startEditMessage(messageId, options = {}) {
+  const message = getChats(getCurrentRoleId()).find((item) => item.id === messageId);
+  if (!message || message.sender !== "user") return;
+  state.editingMessageId = messageId;
+  state.isSelectingMessages = false;
+  state.selectedMessageIds.clear();
+  els.messageInput.value = options.useOriginal ? message.originalContent || message.content : message.content;
+  els.sendBtn.textContent = "完成";
+  els.editMessageBar.classList.remove("hidden");
+  autoResizeInput();
+  els.messageInput.focus();
+  renderMessages();
+}
+
+function cancelEditMessage() {
+  state.editingMessageId = null;
+  els.messageInput.value = "";
+  els.sendBtn.textContent = "发送";
+  els.editMessageBar.classList.add("hidden");
+  autoResizeInput();
+}
+
+function recallMessage(messageId) {
+  const roleId = getCurrentRoleId();
+  const message = getChats(roleId).find((item) => item.id === messageId);
+  if (!message || message.isRevoked) return;
+  if (!isRecentEnough(message.createdAt)) return toast("超过 2 分钟，不能撤回了");
+  updateChat(roleId, messageId, {
+    isRevoked: true,
+    revokedAt: nowISO(),
+    originalContent: message.originalContent || message.content,
+    content: "",
+  });
+  renderMessages();
+  renderChatList();
+  toast("已撤回");
+}
+
+function enterMessageSelection(messageId) {
+  state.isSelectingMessages = true;
+  state.selectedMessageIds = new Set([messageId]);
+  closeAttachPanel();
+  cancelEditMessage();
+  renderMessages();
+}
+
+function toggleSelectedMessage(messageId) {
+  if (!state.isSelectingMessages) return;
+  if (state.selectedMessageIds.has(messageId)) state.selectedMessageIds.delete(messageId);
+  else state.selectedMessageIds.add(messageId);
+  if (!state.selectedMessageIds.size) state.isSelectingMessages = false;
+  renderMessages();
+}
+
+function cancelMessageSelection() {
+  state.isSelectingMessages = false;
+  state.selectedMessageIds.clear();
+  renderMessages();
+}
+
+function updateMessageSelectionUI() {
+  if (!els.messageSelectBar) return;
+  const count = state.selectedMessageIds.size;
+  els.messageSelectBar.classList.toggle("hidden", !state.isSelectingMessages);
+  els.selectedMessageCount.textContent = `已选择 ${count} 条`;
+  els.deleteSelectedMessagesBtn.disabled = !count;
+  els.shotSelectedMessagesBtn.disabled = !count;
+}
+
+function deleteSelectedMessages(messageIds = Array.from(state.selectedMessageIds)) {
+  if (!messageIds.length) return;
+  if (!confirm(`删除 ${messageIds.length} 条消息？`)) return;
+  deleteChats(getCurrentRoleId(), messageIds);
+  state.selectedMessageIds.clear();
+  state.isSelectingMessages = false;
+  renderMessages();
+  renderChatList();
+  toast("已删除");
+}
+
+function createPatMessage(actor = "user") {
+  const role = getRole();
+  const roleId = role.id;
+  const content = actor === "role" ? `${role.name}拍了拍你` : `你拍了拍${role.name}`;
+  addChat(roleId, {
+    sender: "system",
+    type: "pat",
+    content,
+    mode: getCurrentMode(),
+  });
+  closeAttachPanel();
+  renderMessages();
+  renderChatList();
+  navigator.vibrate?.(12);
+}
+
+function wrapCanvasText(ctx, text, maxWidth) {
+  const lines = [];
+  for (const paragraph of String(text || "").split("\n")) {
+    let line = "";
+    for (const char of paragraph) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = char;
+      } else {
+        line = test;
+      }
+    }
+    lines.push(line || "");
+  }
+  return lines;
+}
+
+function roundRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+async function renderSelectedMessagesImage() {
+  const role = getRole();
+  const selected = new Set(state.selectedMessageIds);
+  const messages = getChats(role.id).filter((message) => selected.has(message.id));
+  if (!messages.length) return toast("先选择要截图的消息");
+
+  const width = 430;
+  const padding = 18;
+  const avatarSize = 38;
+  const maxBubbleWidth = 268;
+  const measureCanvas = document.createElement("canvas");
+  const measureCtx = measureCanvas.getContext("2d");
+  measureCtx.font = "15px sans-serif";
+  const rows = messages.map((message) => {
+    const text = message.isRevoked ? "你撤回了一条消息" : message.content || message.fileName || "";
+    const isSystem = message.sender === "system" || message.type === "pat" || message.isRevoked;
+    const lines = wrapCanvasText(measureCtx, text, isSystem ? width - padding * 4 : maxBubbleWidth);
+    const imageHeight = message.type === "image" && message.dataUrl ? 150 : 0;
+    const height = isSystem ? Math.max(30, lines.length * 21 + 10) : Math.max(48, lines.length * 21 + 20 + imageHeight);
+    return { message, text, lines, isSystem, height };
+  });
+  const height = 88 + rows.reduce((sum, row) => sum + row.height + 14, 0) + 28;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * 2;
+  canvas.height = height * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(2, 2);
+  ctx.fillStyle = "#ededed";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#111";
+  ctx.font = "600 17px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(role.name, width / 2, 34);
+  ctx.font = "12px sans-serif";
+  ctx.fillStyle = "#888";
+  ctx.fillText("小手机聊天截图", width / 2, 58);
+
+  let y = 82;
+  for (const row of rows) {
+    const { message, lines, isSystem } = row;
+    const isUser = message.sender === "user";
+    if (isSystem) {
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+      roundRectPath(ctx, padding * 2, y, width - padding * 4, row.height, 5);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      lines.forEach((line, index) => ctx.fillText(line, width / 2, y + 20 + index * 18));
+      y += row.height + 14;
+      continue;
+    }
+
+    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, ...lines.map((line) => ctx.measureText(line).width)) + 22);
+    const bubbleX = isUser ? width - padding - bubbleWidth : padding + avatarSize + 8;
+    const avatarX = isUser ? width - padding - avatarSize : padding;
+    ctx.fillStyle = isUser ? "#95ec69" : "#fff";
+    roundRectPath(ctx, bubbleX, y, bubbleWidth, row.height, 5);
+    ctx.fill();
+    ctx.fillStyle = "#d8d8d8";
+    roundRectPath(ctx, avatarX, y, avatarSize, avatarSize, 7);
+    ctx.fill();
+    ctx.fillStyle = "#111";
+    ctx.font = "15px sans-serif";
+    ctx.textAlign = "left";
+    lines.forEach((line, index) => ctx.fillText(line, bubbleX + 11, y + 22 + index * 21));
+    y += row.height + 14;
+  }
+
+  const url = canvas.toDataURL("image/png");
+  els.shotPreview.src = url;
+  els.downloadShotLink.href = url;
+  showDialog(els.shotDialog);
 }
 
 async function appendModelReply({ role, roleId, settings, mode, userText, recentMessages }) {
@@ -650,7 +1239,9 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
       userText,
     });
     typing.remove();
-    for (const message of reply.messages) {
+    for (let index = 0; index < reply.messages.length; index += 1) {
+      const message = reply.messages[index];
+      await delay(Math.min(950, 320 + String(message).length * 18 + index * 140));
       addChat(roleId, {
         sender: "role",
         content: String(message).trim(),
@@ -659,6 +1250,8 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
         replyToMessageId,
         replyPrompt: userText,
       });
+      renderMessages();
+      renderChatList();
     }
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       addMemory(roleId, { content: reply.memoryCandidate.slice(0, 120), importance: 4, emotionWeight: 4 });
@@ -674,37 +1267,53 @@ async function appendModelReply({ role, roleId, settings, mode, userText, recent
   }
 }
 
+function queueModelReply(payload) {
+  state.replyQueue = state.replyQueue
+    .catch(() => {})
+    .then(async () => {
+      state.replying = true;
+      try {
+        await appendModelReply(payload);
+      } finally {
+        state.replying = false;
+      }
+    });
+  return state.replyQueue;
+}
+
 async function sendMessage() {
   const text = els.messageInput.value.trim();
-  if (!text || state.sending) return;
+  if (!text) return;
   const role = getRole();
   const roleId = role.id;
   const settings = getSettings();
   const mode = getCurrentMode();
-  state.sending = true;
-  els.sendBtn.disabled = true;
+  if (state.editingMessageId) {
+    updateChat(roleId, state.editingMessageId, { content: text, isRevoked: false, revokedAt: "", originalContent: "" });
+    cancelEditMessage();
+    renderMessages();
+    renderChatList();
+    toast("已修改");
+    return;
+  }
   els.messageInput.value = "";
   autoResizeInput();
   addChat(roleId, { sender: "user", content: text, mode });
   renderMessages();
+  renderChatList();
 
-  try {
-    await appendModelReply({
+  queueModelReply({
       role,
       roleId,
       settings,
       mode,
       recentMessages: getChats(roleId).slice(-18),
       userText: text,
-    });
-  } finally {
-    state.sending = false;
-    els.sendBtn.disabled = false;
-  }
+  });
 }
 
 async function sendLocalAttachment(file, type) {
-  if (!file || state.sending) return;
+  if (!file) return;
   const role = getRole();
   const roleId = role.id;
   const settings = getSettings();
@@ -714,8 +1323,6 @@ async function sendLocalAttachment(file, type) {
   const dataUrl = isImage ? await readFileAsDataURL(file) : "";
 
   closeAttachPanel();
-  state.sending = true;
-  els.sendBtn.disabled = true;
   addChat(roleId, {
     sender: "user",
     type,
@@ -728,19 +1335,14 @@ async function sendLocalAttachment(file, type) {
   renderMessages();
   renderChatList();
 
-  try {
-    await appendModelReply({
+  queueModelReply({
       role,
       roleId,
       settings,
       mode,
       recentMessages: getChats(roleId).slice(-18),
       userText: content,
-    });
-  } finally {
-    state.sending = false;
-    els.sendBtn.disabled = false;
-  }
+  });
 }
 
 async function regenerateLastReply() {
@@ -789,7 +1391,6 @@ async function regenerateReplyTurn(messageId) {
   closeAttachPanel();
   closeMessageActionMenu();
   state.sending = true;
-  els.sendBtn.disabled = true;
   setChats(roleId, keptMessages);
   renderMessages();
 
@@ -808,7 +1409,6 @@ async function regenerateReplyTurn(messageId) {
     }
   } finally {
     state.sending = false;
-    els.sendBtn.disabled = false;
   }
 }
 
@@ -846,7 +1446,6 @@ async function createProactiveMessage() {
   const userText = "你现在想主动找我说句话。像真的微信联系人一样发来一条短消息，可以是随口一句、想起我了、接着上次的话说，别解释为什么发。";
   closeAttachPanel();
   state.sending = true;
-  els.sendBtn.disabled = true;
   els.proactiveBanner.classList.add("hidden");
   try {
     await appendModelReply({
@@ -859,7 +1458,6 @@ async function createProactiveMessage() {
     });
   } finally {
     state.sending = false;
-    els.sendBtn.disabled = false;
   }
 }
 
@@ -1031,6 +1629,8 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     if (event.target.closest(".message-row .bubble")) return;
     if (!event.target.closest(".message-action-menu")) closeMessageActionMenu();
+    if (!event.target.closest(".moment-action-menu")) closeMomentActionMenu();
+    if (!event.target.closest(".chat-action-menu")) closeChatActionMenu();
   });
   els.tabs.forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tabTarget)));
   $("#backToChatsBtn").addEventListener("click", closeChat);
@@ -1068,6 +1668,7 @@ function bindEvents() {
   els.attachFileBtn.addEventListener("click", () => els.fileAttachInput.click());
   els.regenerateBtn.addEventListener("click", regenerateLastReply);
   els.proactiveTalkBtn.addEventListener("click", createProactiveMessage);
+  els.patBtn.addEventListener("click", () => createPatMessage("user"));
   els.imageAttachInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1148,7 +1749,46 @@ function bindEvents() {
     openRoleDialog(state.profileRoleId);
   });
 
-  $("#generateMomentBtn").addEventListener("click", handleGenerateMoment);
+  let momentCameraLongPressed = false;
+  $("#generateMomentBtn").addEventListener("pointerdown", () => {
+    momentCameraLongPressed = false;
+    state.momentLongPressTimer = setTimeout(() => {
+      momentCameraLongPressed = true;
+      openMomentEditor({ textOnly: true });
+    }, 560);
+  });
+  $("#generateMomentBtn").addEventListener("pointerup", () => clearTimeout(state.momentLongPressTimer));
+  $("#generateMomentBtn").addEventListener("pointerleave", () => clearTimeout(state.momentLongPressTimer));
+  $("#generateMomentBtn").addEventListener("click", () => {
+    if (momentCameraLongPressed) return;
+    showDialog(els.momentChoiceDialog);
+  });
+  $("#writeMomentBtn").addEventListener("click", () => {
+    closeDialog(els.momentChoiceDialog);
+    openMomentEditor();
+  });
+  $("#writeTextMomentBtn").addEventListener("click", () => {
+    closeDialog(els.momentChoiceDialog);
+    openMomentEditor({ textOnly: true });
+  });
+  $("#aiMomentBtn").addEventListener("click", async () => {
+    closeDialog(els.momentChoiceDialog);
+    await handleGenerateMoment();
+  });
+  $("#closeMomentChoiceBtn").addEventListener("click", () => closeDialog(els.momentChoiceDialog));
+  $("#closeMomentDialogBtn").addEventListener("click", closeMomentEditor);
+  els.momentForm.addEventListener("submit", saveMomentFromForm);
+  els.momentImageInput.addEventListener("change", async (event) => {
+    const files = Array.from(event.target.files || []).slice(0, 9 - state.momentImages.length);
+    event.target.value = "";
+    for (const file of files) state.momentImages.push(await readFileAsDataURL(file));
+    renderMomentImageList();
+  });
+  els.cancelEditMessageBtn.addEventListener("click", cancelEditMessage);
+  els.cancelSelectMessagesBtn.addEventListener("click", cancelMessageSelection);
+  els.deleteSelectedMessagesBtn.addEventListener("click", () => deleteSelectedMessages());
+  els.shotSelectedMessagesBtn.addEventListener("click", renderSelectedMessagesImage);
+  $("#closeShotDialogBtn").addEventListener("click", () => closeDialog(els.shotDialog));
 
   [
     els.userNameInput,
@@ -1223,6 +1863,7 @@ function tickClock() {
 
 function bootstrap() {
   initStore();
+  ensureRuntimeUI();
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.installPromptEvent = event;

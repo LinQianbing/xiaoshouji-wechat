@@ -1,5 +1,19 @@
-import { addMoment, getChats, getCurrentRoleId, getMemories, getRole, getSettings, getRoles, getMoments, updateMoment } from "./storage.js";
+import {
+  DEFAULT_USER_AVATAR,
+  addMoment,
+  getChats,
+  getCurrentRoleId,
+  getMemories,
+  getRole,
+  getSettings,
+  getRoles,
+  getMoments,
+  setMoments,
+  updateMoment,
+} from "./storage.js";
 import { generateMoment } from "./ai.js";
+
+export const USER_MOMENTS_ID = "__user__";
 
 export async function createMomentForRole(roleId = getCurrentRoleId()) {
   const settings = getSettings();
@@ -11,13 +25,41 @@ export async function createMomentForRole(roleId = getCurrentRoleId()) {
   return addMoment(roleId, { content: result.content });
 }
 
+export function createUserMoment({ content, images = [], visibility = "public", location = "", mentions = [] }) {
+  const text = content?.trim() || "";
+  if (!text && !images.length) throw new Error("先写点什么，或选一张图片");
+  return addMoment(USER_MOMENTS_ID, {
+    authorType: "user",
+    content: text,
+    images,
+    visibility,
+    location,
+    mentions,
+  });
+}
+
+export function updateUserMoment(momentId, patch) {
+  updateMoment(USER_MOMENTS_ID, momentId, patch);
+}
+
+export function deleteMoment(roleId, momentId) {
+  setMoments(roleId, getMoments(roleId).filter((moment) => moment.id !== momentId));
+}
+
 export function getAllMoments() {
   const roles = getRoles();
+  const settings = getSettings();
   const byRole = getMoments();
-  return roles
-    .flatMap((role) =>
-      (byRole[role.id] || []).map((moment) => ({ ...moment, role })),
-    )
+  const userRole = {
+    id: USER_MOMENTS_ID,
+    name: settings.userName || "我",
+    avatar: settings.userAvatar || DEFAULT_USER_AVATAR,
+    isUser: true,
+  };
+  return [
+    ...(byRole[USER_MOMENTS_ID] || []).map((moment) => ({ ...moment, role: userRole, authorType: "user" })),
+    ...roles.flatMap((role) => (byRole[role.id] || []).map((moment) => ({ ...moment, role, authorType: moment.authorType || "role" }))),
+  ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 

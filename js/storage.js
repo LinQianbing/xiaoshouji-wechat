@@ -173,17 +173,34 @@ export function addChat(roleId, message) {
     sender: message.sender,
     type: message.type || "text",
     content: message.content || "",
+    originalContent: message.originalContent || "",
     fileName: message.fileName || "",
     fileSize: Number(message.fileSize || 0),
     dataUrl: message.dataUrl || "",
     replyGroupId: message.replyGroupId || "",
     replyToMessageId: message.replyToMessageId || "",
     replyPrompt: message.replyPrompt || "",
+    isRevoked: Boolean(message.isRevoked),
+    revokedAt: message.revokedAt || "",
     mode: message.mode || getCurrentMode(),
     createdAt: message.createdAt || nowISO(),
+    updatedAt: message.updatedAt || "",
   };
   setChats(roleId, [...messages, normalized]);
   return normalized;
+}
+
+export function updateChat(roleId, messageId, patch) {
+  const next = getChats(roleId).map((message) =>
+    message.id === messageId ? { ...message, ...patch, updatedAt: nowISO() } : message,
+  );
+  setChats(roleId, next);
+}
+
+export function deleteChats(roleId, messageIds = []) {
+  const ids = new Set(messageIds);
+  if (!ids.size) return;
+  setChats(roleId, getChats(roleId).filter((message) => !ids.has(message.id)));
 }
 
 export function clearChats(roleId = getCurrentRoleId()) {
@@ -236,8 +253,14 @@ export function addMoment(roleId, moment) {
   const items = getMoments(roleId);
   const normalized = {
     id: moment.id || uid("moment"),
+    authorType: moment.authorType || "role",
     content: moment.content,
+    images: Array.isArray(moment.images) ? moment.images : [],
+    visibility: moment.visibility || "public",
+    location: moment.location || "",
+    mentions: Array.isArray(moment.mentions) ? moment.mentions : [],
     createdAt: moment.createdAt || nowISO(),
+    updatedAt: moment.updatedAt || "",
     likes: Number(moment.likes ?? 0),
     comments: Array.isArray(moment.comments) ? moment.comments : [],
   };
