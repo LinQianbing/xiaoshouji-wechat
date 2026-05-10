@@ -62,6 +62,9 @@ const state = {
   editingMomentId: null,
   momentImages: [],
   momentLongPressTimer: null,
+  recallRange: "auto",
+  recallCustomStart: "",
+  recallCustomEnd: "",
   installPromptEvent: null,
   longPressTimer: null,
   messageActionMenu: null,
@@ -145,6 +148,9 @@ const els = {
 };
 
 function ensureRuntimeUI() {
+  if (!$("#recallRangeBtn")) {
+    $("#nowLabel")?.insertAdjacentHTML("beforebegin", `<button class="recall-range-btn" id="recallRangeBtn" type="button">查记录：智能</button>`);
+  }
   if (!$("#editMessageBar")) {
     $(".input-bar").insertAdjacentHTML(
       "beforebegin",
@@ -217,11 +223,33 @@ function ensureRuntimeUI() {
           </header>
           <div class="shot-preview-wrap"><img id="shotPreview" alt="聊天截图预览" /></div>
         </div>
+      </dialog>
+      <dialog class="sheet-dialog" id="recallRangeDialog">
+        <div class="menu-sheet recall-range-sheet">
+          <h2>查聊天记录范围</h2>
+          <button type="button" data-recall-range="auto">智能判断</button>
+          <button type="button" data-recall-range="all">全部聊天</button>
+          <button type="button" data-recall-range="today">今天</button>
+          <button type="button" data-recall-range="yesterday">昨天</button>
+          <button type="button" data-recall-range="7d">近 7 天</button>
+          <button type="button" data-recall-range="30d">近 30 天</button>
+          <div class="recall-custom-fields">
+            <label>开始<input id="recallStartInput" type="date" /></label>
+            <label>结束<input id="recallEndInput" type="date" /></label>
+            <button id="saveRecallCustomBtn" type="button">使用自定义</button>
+          </div>
+          <button id="closeRecallRangeBtn" type="button">取消</button>
+        </div>
       </dialog>`,
     );
   }
 
   Object.assign(els, {
+    recallRangeBtn: $("#recallRangeBtn"),
+    recallRangeDialog: $("#recallRangeDialog"),
+    recallStartInput: $("#recallStartInput"),
+    recallEndInput: $("#recallEndInput"),
+    saveRecallCustomBtn: $("#saveRecallCustomBtn"),
     editMessageBar: $("#editMessageBar"),
     cancelEditMessageBtn: $("#cancelEditMessageBtn"),
     messageSelectBar: $("#messageSelectBar"),
@@ -278,6 +306,90 @@ function delay(ms) {
 
 function isRecentEnough(value, minutes = 2) {
   return Date.now() - new Date(value).getTime() <= minutes * 60 * 1000;
+}
+
+function toDateInputValue(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function startOfLocalDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfLocalDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function presetRecallRange(preset) {
+  const now = new Date();
+  if (preset === "today") return { key: "today", label: "今天", start: startOfLocalDay(now), end: endOfLocalDay(now) };
+  if (preset === "yesterday") {
+    const date = new Date(now);
+    date.setDate(date.getDate() - 1);
+    return { key: "yesterday", label: "昨天", start: startOfLocalDay(date), end: endOfLocalDay(date) };
+  }
+  if (preset === "7d") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 7);
+    return { key: "7d", label: "近7天", start, end: now };
+  }
+  if (preset === "30d") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 30);
+    return { key: "30d", label: "近30天", start, end: now };
+  }
+  return { key: "all", label: "全部", start: null, end: null };
+}
+
+function customDayRecallRange(date, label = "") {
+  return { key: "custom-day", label: label || toDateInputValue(date), start: startOfLocalDay(date), end: endOfLocalDay(date) };
+}
+
+function manualRecallRange() {
+  if (state.recallRange === "custom") {
+    const start = state.recallCustomStart ? startOfLocalDay(new Date(`${state.recallCustomStart}T00:00:00`)) : null;
+    const end = state.recallCustomEnd ? endOfLocalDay(new Date(`${state.recallCustomEnd}T00:00:00`)) : null;
+    const startLabel = state.recallCustomStart || "最早";
+    const endLabel = state.recallCustomEnd || "现在";
+    return { key: "custom", label: `${startLabel} 至 ${endLabel}`, start, end };
+  }
+  return presetRecallRange(state.recallRange);
+}
+
+function inferRecallRangeFromText(text = "") {
+  const value = String(text);
+  const exactDate = value.match(/(20\d{2})[-年/.](\d{1,2})[-月/.](\d{1,2})日?/);
+  if (exactDate) {
+    const date = new Date(Number(exactDate[1]), Number(exactDate[2]) - 1, Number(exactDate[3]));
+    return customDayRecallRange(date, `${exactDate[1]}年${Number(exactDate[2])}月${Number(exactDate[3])}日`);
+  }
+  const monthDay = value.match(/(\d{1,2})月(\d{1,2})[日号]?/);
+  if (monthDay) {
+    const date = new Date(new Date().getFullYear(), Number(monthDay[1]) - 1, Number(monthDay[2]));
+    return customDayRecallRange(date, `${Number(monthDay[1])}月${Number(monthDay[2])}日`);
+  }
+  if (/昨天/.test(value)) return presetRecallRange("yesterday");
+  if (/今天|刚才|上午|中午|下午|晚上|今晚/.test(value)) return presetRecallRange("today");
+  if (/上周|这周|本周|最近一周|近7天|最近7天|七天/.test(value)) return presetRecallRange("7d");
+  if (/上个月|这个月|本月|最近一个月|近30天|最近30天|三十天/.test(value)) return presetRecallRange("30d");
+  return presetRecallRange("all");
+}
+
+function resolveRecallRange(text = "") {
+  if (state.recallRange !== "auto") return manualRecallRange();
+  const inferred = inferRecallRangeFromText(text);
+  return { ...inferred, auto: true };
+}
+
+function updateRecallRangeButton() {
+  if (!els.recallRangeBtn) return;
+  const label = state.recallRange === "auto" ? "智能" : manualRecallRange().label;
+  els.recallRangeBtn.textContent = `查记录：${label}`;
 }
 
 function renderMessageContent(msg) {
@@ -821,6 +933,7 @@ function renderChatDetail() {
   els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 仍可查看" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
   els.nowLabel.textContent = `${time.period} ${time.time}`;
   $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
+  updateRecallRangeButton();
   renderMessages();
   if (isApiReady(getSettings())) hideApiAlert();
   else showApiAlert();
@@ -883,10 +996,15 @@ function appendTyping() {
   return typing;
 }
 
-function appendRecallStatus() {
+function recallStatusText(range) {
+  if (!range || range.key === "all") return "对方正在翻旧账中......";
+  return `对方正在翻${range.label}的旧账中......`;
+}
+
+function appendRecallStatus(range) {
   const status = document.createElement("div");
   status.className = "message-row system recall-status";
-  status.innerHTML = `<div class="system-bubble">对方正在翻旧账中......</div>`;
+  status.innerHTML = `<div class="system-bubble">${escapeHTML(recallStatusText(range))}</div>`;
   els.messageList.appendChild(status);
   els.messageList.scrollTop = els.messageList.scrollHeight;
   return status;
@@ -964,10 +1082,16 @@ function searchChatHistory(roleId, userText, options = {}) {
   const keywords = extractRecallKeywords(userText);
   if (!keywords.length) return [];
   const excludedIds = new Set(options.excludeIds || []);
+  const range = options.range || presetRecallRange("all");
+  const startMs = range.start ? range.start.getTime() : null;
+  const endMs = range.end ? range.end.getTime() : null;
   const messages = getChats(roleId);
   const hits = [];
   for (const message of messages) {
     if (!message.content || message.isRevoked || excludedIds.has(message.id)) continue;
+    const createdMs = new Date(message.createdAt).getTime();
+    if (startMs && createdMs < startMs) continue;
+    if (endMs && createdMs > endMs) continue;
     const haystack = normalizeSearchText(message.content);
     const matched = keywords.filter((keyword) => haystack.includes(normalizeSearchText(keyword)));
     if (!matched.length) continue;
@@ -1337,11 +1461,12 @@ async function appendModelReply({
   userText,
   recentMessages,
   recalledMessages = [],
+  recalledRange = null,
   recallTriggered = false,
   recallStatus = null,
 }) {
   if (recallTriggered || recalledMessages.length) {
-    recallStatus ||= appendRecallStatus();
+    recallStatus ||= appendRecallStatus(recalledRange);
     await delay(900);
   }
   const typing = appendTyping();
@@ -1355,6 +1480,7 @@ async function appendModelReply({
       memories: getMemories(roleId),
       recentMessages,
       recalledMessages,
+      recalledRange,
       userText,
     });
     recallStatus?.remove();
@@ -1422,10 +1548,11 @@ async function sendMessage() {
   const sentMessage = addChat(roleId, { sender: "user", content: text, mode });
   const recentMessages = getChats(roleId).slice(-18);
   const recallTriggered = shouldRecallChatHistory(text);
-  const recalledMessages = searchChatHistory(roleId, text, { excludeIds: [sentMessage.id] });
+  const recalledRange = resolveRecallRange(text);
+  const recalledMessages = searchChatHistory(roleId, text, { excludeIds: [sentMessage.id], range: recalledRange });
   renderMessages();
   renderChatList();
-  const recallStatus = recallTriggered ? appendRecallStatus() : null;
+  const recallStatus = recallTriggered ? appendRecallStatus(recalledRange) : null;
 
   queueModelReply({
     role,
@@ -1434,6 +1561,7 @@ async function sendMessage() {
     mode,
     recentMessages,
     recalledMessages,
+    recalledRange,
     recallTriggered,
     recallStatus,
     userText: text,
@@ -1462,10 +1590,11 @@ async function sendLocalAttachment(file, type) {
   });
   const recentMessages = getChats(roleId).slice(-18);
   const recallTriggered = shouldRecallChatHistory(content);
-  const recalledMessages = searchChatHistory(roleId, content, { excludeIds: [sentMessage.id] });
+  const recalledRange = resolveRecallRange(content);
+  const recalledMessages = searchChatHistory(roleId, content, { excludeIds: [sentMessage.id], range: recalledRange });
   renderMessages();
   renderChatList();
-  const recallStatus = recallTriggered ? appendRecallStatus() : null;
+  const recallStatus = recallTriggered ? appendRecallStatus(recalledRange) : null;
 
   queueModelReply({
     role,
@@ -1474,6 +1603,7 @@ async function sendLocalAttachment(file, type) {
     mode,
     recentMessages,
     recalledMessages,
+    recalledRange,
     recallTriggered,
     recallStatus,
     userText: content,
@@ -1795,6 +1925,28 @@ function bindEvents() {
       toast(button.dataset.mode === "offline" ? "已切到线下模式" : "已切到线上模式");
     });
   });
+  els.recallRangeBtn.addEventListener("click", () => {
+    els.recallStartInput.value = state.recallCustomStart;
+    els.recallEndInput.value = state.recallCustomEnd;
+    showDialog(els.recallRangeDialog);
+  });
+  $$("[data-recall-range]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.recallRange = button.dataset.recallRange;
+      closeDialog(els.recallRangeDialog);
+      updateRecallRangeButton();
+      toast(`查记录范围：${state.recallRange === "auto" ? "智能判断" : manualRecallRange().label}`);
+    });
+  });
+  els.saveRecallCustomBtn.addEventListener("click", () => {
+    state.recallRange = "custom";
+    state.recallCustomStart = els.recallStartInput.value;
+    state.recallCustomEnd = els.recallEndInput.value;
+    closeDialog(els.recallRangeDialog);
+    updateRecallRangeButton();
+    toast(`查记录范围：${manualRecallRange().label}`);
+  });
+  $("#closeRecallRangeBtn").addEventListener("click", () => closeDialog(els.recallRangeDialog));
 
   $("#pullProactiveBtn").addEventListener("click", createProactiveMessage);
   $("#goApiSettingsBtn").addEventListener("click", openApiSettings);

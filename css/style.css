@@ -491,6 +491,19 @@ input[type="range"] {
   color: #fff;
 }
 
+.recall-range-btn {
+  max-width: 118px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #666;
+  padding: 5px 10px;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 #nowLabel {
   margin-left: auto;
   color: #858585;
@@ -1570,12 +1583,61 @@ input[type="range"] {
   gap: 10px;
 }
 
+.recall-range-sheet {
+  text-align: left;
+}
+
+.recall-range-sheet h2 {
+  margin: 0 0 4px;
+  text-align: center;
+  font-size: 17px;
+}
+
+.recall-custom-fields {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.recall-custom-fields label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #666;
+  font-size: 13px;
+}
+
+.recall-custom-fields input {
+  min-width: 0;
+  border: 0;
+  background: #f3f3f3;
+  border-radius: 6px;
+  padding: 8px;
+  color: #111;
+}
+
+.recall-custom-fields button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--wechat-green-dark);
+  color: #fff;
+  padding: 10px;
+}
+
 .profile-actions button,
 .menu-sheet button:not(.sheet-close) {
   border: 0;
   border-radius: 10px;
   background: #fff;
   padding: 13px;
+}
+
+.menu-sheet .recall-custom-fields button {
+  background: var(--wechat-green-dark);
+  color: #fff;
 }
 
 #profileChatBtn {

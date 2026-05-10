@@ -30,19 +30,22 @@ function recentMessagesText(messages = [], roleName = "TA") {
     .join("\n");
 }
 
-function recalledMessagesText(messages = [], roleName = "TA") {
-  if (!messages.length) return "这次没有查到相关旧聊天。";
-  return messages
+function recalledMessagesText(messages = [], roleName = "TA", range = null) {
+  const rangeText = range?.label ? `检索范围：${range.label}${range.auto ? "（智能判断）" : ""}` : "检索范围：全部";
+  if (!messages.length) return `${rangeText}\n这次没有查到相关旧聊天。`;
+  return [
+    rangeText,
+    ...messages
     .map((msg, index) => {
       const who = msg.sender === "user" ? "我" : msg.sender === "role" ? roleName : "系统";
       const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString("zh-CN", { hour12: false }) : "未知时间";
       const keywords = msg.matchedKeywords?.length ? `；命中：${msg.matchedKeywords.join("、")}` : "";
       return `${index + 1}. ${time}，${who}：${msg.content}${keywords}`;
-    })
-    .join("\n");
+    }),
+  ].join("\n");
 }
 
-export function buildChatPrompt({ role, settings, mode, memories, recentMessages, recalledMessages = [], userText }) {
+export function buildChatPrompt({ role, settings, mode, memories, recentMessages, recalledMessages = [], recalledRange = null, userText }) {
   const time = getTimeContext();
   const system = [
     "你正在扮演用户微信里的一个联系人，不是助手、客服、旁白或心理咨询师。",
@@ -87,7 +90,7 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     recentMessagesText(recentMessages, role.name),
     "",
     "【查到的旧聊天记录】",
-    recalledMessagesText(recalledMessages, role.name),
+    recalledMessagesText(recalledMessages, role.name, recalledRange),
     "",
     "【用户刚刚发来】",
     userText,
