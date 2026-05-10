@@ -70,6 +70,30 @@ input[type="range"] {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.22);
 }
 
+@media (max-width: 520px), (display-mode: standalone) {
+  html,
+  body {
+    min-height: 100dvh;
+    background: var(--wechat-bg);
+  }
+
+  .desktop-bg {
+    min-height: 100dvh;
+    display: block;
+    padding: 0;
+    background: var(--wechat-bg);
+  }
+
+  .phone-frame {
+    width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 .screen {
   position: absolute;
   inset: 0;
