@@ -1,5 +1,7 @@
 import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js";
 
+const REQUEST_TIMEOUT_MS = 45000;
+
 export class ApiNotConfiguredError extends Error {
   constructor(message = "还没有连接 API，请先到“我 → AI 设置”填写 API Key，并拉取模型。") {
     super(message);
@@ -34,10 +36,17 @@ function modelsEndpoint(apiBase) {
 }
 
 async function fetchWithReadableError(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, options);
+    return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("请求超时，模型接口 45 秒内没有响应。请稍后再发一次，或检查接口地址/网络。");
+    }
     throw new Error(`网络或跨域请求失败。请确认接口地址可从浏览器访问，并支持 CORS：${error.message}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
