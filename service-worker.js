@@ -1,4 +1,4 @@
-const CACHE_NAME = "xiaoshouji-pwa-v16";
+const CACHE_NAME = "xiaoshouji-pwa-v17";
 
 const APP_SHELL = [
   "./",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   "./manifest.webmanifest?v=10",
   "./css/style.css?v=11",
   "./js/ai.js?v=2",
-  "./js/main.js?v=13",
+  "./js/main.js?v=14",
   "./js/memory.js",
   "./js/moments.js",
   "./js/prompt.js",

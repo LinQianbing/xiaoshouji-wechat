@@ -1559,7 +1559,8 @@ async function renderSelectedMessagesImage() {
   const width = 430;
   const padding = 18;
   const avatarSize = 38;
-  const maxBubbleWidth = 268;
+  const avatarGap = 8;
+  const maxBubbleWidth = width - padding * 2 - avatarSize - avatarGap - 76;
   const measureCanvas = document.createElement("canvas");
   const measureCtx = measureCanvas.getContext("2d");
   measureCtx.font = "15px sans-serif";
@@ -1632,8 +1633,8 @@ async function renderSelectedMessagesImage() {
     const quoteWidth = row.quoteLines?.length ? Math.max(...row.quoteLines.map((line) => ctx.measureText(line).width)) + 34 : 0;
     ctx.font = "15px sans-serif";
     const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, row.mediaWidth || 0, quoteWidth, ...lines.map((line) => ctx.measureText(line).width)) + 22);
-    const bubbleX = isUser ? width - padding - bubbleWidth : padding + avatarSize + 8;
     const avatarX = isUser ? width - padding - avatarSize : padding;
+    const bubbleX = isUser ? avatarX - avatarGap - bubbleWidth : padding + avatarSize + avatarGap;
     ctx.fillStyle = isUser ? "#95ec69" : "#fff";
     roundRectPath(ctx, bubbleX, y, bubbleWidth, row.height, 5);
     ctx.fill();
