@@ -1,4 +1,4 @@
-const CACHE_NAME = "xiaoshouji-pwa-v19";
+const CACHE_NAME = "xiaoshouji-pwa-v20";
 
 const APP_SHELL = [
   "./",
@@ -7,6 +7,7 @@ const APP_SHELL = [
   "./css/style.css?v=13",
   "./js/ai.js?v=3",
   "./js/main.js?v=16",
+  "./js/shot-fix.js?v=1",
   "./js/memory.js",
   "./js/moments.js",
   "./js/prompt.js?v=2",
