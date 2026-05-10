@@ -593,6 +593,20 @@ input[type="range"] {
   display: none;
 }
 
+.blocked-exclaim {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
 .message-row.system {
   justify-content: center;
   align-items: center;

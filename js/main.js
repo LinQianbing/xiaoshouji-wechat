@@ -585,7 +585,7 @@ function renderChatList() {
   els.chatList.innerHTML = filtered
     .map((role) => {
       const preview = latestPreview(role.id);
-      const count = role.isBlocked ? 0 : unread[role.id] || 0;
+      const count = unread[role.id] || 0;
       return `
         <article class="chat-cell" data-role-id="${role.id}">
           <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(role.name)}头像">
@@ -978,7 +978,7 @@ function renderChatDetail() {
   const mode = getCurrentMode();
   const time = getTimeContext();
   els.chatTitle.textContent = role.name;
-  els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 不再主动打扰" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
+  els.chatSubtitle.textContent = role.isBlocked ? "已加入黑名单 · 对方知道了" : `${mode === "offline" ? "线下模式" : "在线 · 线上模式"}`;
   els.nowLabel.textContent = `${time.period} ${time.time}`;
   $$(".mode-pill").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
   applyChatBackground(role);
@@ -1009,6 +1009,7 @@ function renderMessages() {
       const isSystem = msg.sender === "system" || msg.isRevoked || msg.type === "pat" || msg.type === "system";
       const avatar = isUser ? settings.userAvatar || DEFAULT_USER_AVATAR : role.avatar || DEFAULT_ROLE_AVATAR;
       const selected = state.selectedMessageIds.has(msg.id);
+      const showBlockedWarning = role.isBlocked && msg.sender === "role" && !isSystem;
       if (isSystem) {
         return `
         ${divider}
@@ -1024,6 +1025,7 @@ function renderMessages() {
           ${state.isSelectingMessages ? `<button class="message-check ${selected ? "checked" : ""}" type="button" aria-label="选择消息"></button>` : ""}
           <img class="message-avatar" src="${avatar}" alt="头像">
           <div class="bubble">${renderMessageContent(msg)}</div>
+          ${showBlockedWarning ? `<span class="blocked-exclaim" aria-label="对方知道自己被拉黑">!</span>` : ""}
         </div>
       `;
     })
@@ -1487,6 +1489,7 @@ async function renderSelectedMessagesImage() {
   for (const row of rows) {
     const { message, lines, isSystem } = row;
     const isUser = message.sender === "user";
+    const showBlockedWarning = role.isBlocked && message.sender === "role" && !isSystem;
     if (isSystem) {
       ctx.font = "12px sans-serif";
       ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
@@ -1516,6 +1519,18 @@ async function renderSelectedMessagesImage() {
     if (row.image) {
       const imageY = y + 10 + lines.length * 21 + row.imageGap;
       drawRoundedCoverImage(ctx, row.image, bubbleX + 11, imageY, row.mediaWidth, row.mediaHeight, 5);
+    }
+    if (showBlockedWarning) {
+      const markX = bubbleX + bubbleWidth + 14;
+      const markY = y + Math.min(24, row.height / 2);
+      ctx.fillStyle = "#fa5151";
+      ctx.beginPath();
+      ctx.arc(markX, markY, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("!", markX, markY + 5);
     }
     y += row.height + 14;
   }
@@ -1752,7 +1767,7 @@ async function regenerateReplyTurn(messageId) {
 function checkProactiveBanner() {
   const settings = getSettings();
   const lastOpenAt = getLastOpenAt();
-  if (getRole().isBlocked || !settings.allowProactiveMessage || !lastOpenAt) {
+  if (!settings.allowProactiveMessage || !lastOpenAt) {
     els.proactiveBanner.classList.add("hidden");
     return;
   }
@@ -1767,11 +1782,6 @@ function checkProactiveBanner() {
 
 async function createProactiveMessage() {
   const settings = getSettings();
-  if (getRole().isBlocked) {
-    toast("已加入黑名单，对方不会主动打扰");
-    closeAttachPanel();
-    return;
-  }
   if (!settings.allowProactiveMessage) {
     toast("先在“我”里打开允许主动消息");
     closeAttachPanel();
@@ -1964,7 +1974,6 @@ function maybeGenerateOfflineUnread() {
   const roles = getRoles();
   const current = getCurrentRoleId();
   for (const role of roles) {
-    if (role.isBlocked) continue;
     if (role.id !== current) setUnread(role.id, Math.max(getUnread()[role.id] || 0, 1));
   }
 }
@@ -2059,7 +2068,6 @@ function bindEvents() {
   els.blockChatInput.addEventListener("change", () => {
     const role = getRole();
     saveRole({ ...role, isBlocked: els.blockChatInput.checked });
-    if (els.blockChatInput.checked) setUnread(role.id, 0);
     renderChatInfo();
     renderChatList();
     toast(els.blockChatInput.checked ? "已加入黑名单" : "已移出黑名单");
