@@ -182,6 +182,7 @@ export function addChat(roleId, message) {
     replyGroupId: message.replyGroupId || "",
     replyToMessageId: message.replyToMessageId || "",
     replyPrompt: message.replyPrompt || "",
+    quoteToMessageId: message.quoteToMessageId || "",
     isRevoked: Boolean(message.isRevoked),
     revokedAt: message.revokedAt || "",
     mode: message.mode || getCurrentMode(),

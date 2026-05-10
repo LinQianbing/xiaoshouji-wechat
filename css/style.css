@@ -675,6 +675,24 @@ input[type="range"] {
   white-space: pre-wrap;
 }
 
+.quote-card {
+  margin-top: 7px;
+  padding: 6px 8px;
+  border-left: 3px solid rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #777;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-card span {
+  color: #576b95;
+}
+
 .message-row.role .bubble::before {
   content: "";
   position: absolute;
@@ -861,7 +879,8 @@ input[type="range"] {
 }
 
 .edit-message-bar,
-.message-select-bar {
+.message-select-bar,
+.quote-reply-bar {
   flex: 0 0 auto;
   min-height: 42px;
   display: flex;
@@ -879,8 +898,30 @@ input[type="range"] {
   font-size: 13px;
 }
 
+.quote-reply-bar div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.quote-reply-bar strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: #576b95;
+}
+
+.quote-reply-bar span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #777;
+  font-size: 12px;
+}
+
 .edit-message-bar button,
-.message-select-bar button {
+.message-select-bar button,
+.quote-reply-bar button {
   border: 0;
   border-radius: 5px;
   background: #fff;

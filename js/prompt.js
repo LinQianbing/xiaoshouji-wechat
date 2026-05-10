@@ -28,9 +28,14 @@ function memoryText(memories = []) {
 
 function recentMessagesText(messages = [], roleName = "TA") {
   if (!messages.length) return "暂无最近聊天。";
+  const byId = new Map(messages.map((msg) => [msg.id, msg]));
   return messages
     .slice(-16)
-    .map((msg) => `${msg.sender === "user" ? "我" : roleName}：${msg.content}`)
+    .map((msg) => {
+      const quote = msg.quoteToMessageId ? byId.get(msg.quoteToMessageId) : null;
+      const quoteText = quote ? `（引用${quote.sender === "user" ? "我" : roleName}：${quote.content || quote.fileName || "一条消息"}）` : "";
+      return `${msg.sender === "user" ? "我" : roleName}：${msg.content}${quoteText}`;
+    })
     .join("\n");
 }
 

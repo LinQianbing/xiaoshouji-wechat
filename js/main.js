@@ -57,6 +57,7 @@ const state = {
   editingMessageId: null,
   selectedMessageIds: new Set(),
   isSelectingMessages: false,
+  quoteToMessageId: "",
   momentActionMenu: null,
   editingMomentId: null,
   momentImages: [],
@@ -174,6 +175,18 @@ function ensureRuntimeUI() {
       </div>`,
     );
   }
+  if (!$("#quoteReplyBar")) {
+    $(".input-bar").insertAdjacentHTML(
+      "beforebegin",
+      `<div class="quote-reply-bar hidden" id="quoteReplyBar">
+        <div>
+          <strong id="quoteReplyTitle">引用</strong>
+          <span id="quoteReplyText"></span>
+        </div>
+        <button id="cancelQuoteReplyBtn" type="button" aria-label="取消引用">×</button>
+      </div>`,
+    );
+  }
   if (!$("#momentDialog")) {
     document.body.insertAdjacentHTML(
       "beforeend",
@@ -260,6 +273,10 @@ function ensureRuntimeUI() {
     cancelSelectMessagesBtn: $("#cancelSelectMessagesBtn"),
     deleteSelectedMessagesBtn: $("#deleteSelectedMessagesBtn"),
     shotSelectedMessagesBtn: $("#shotSelectedMessagesBtn"),
+    quoteReplyBar: $("#quoteReplyBar"),
+    quoteReplyTitle: $("#quoteReplyTitle"),
+    quoteReplyText: $("#quoteReplyText"),
+    cancelQuoteReplyBtn: $("#cancelQuoteReplyBtn"),
     momentDialog: $("#momentDialog"),
     momentForm: $("#momentForm"),
     momentDialogTitle: $("#momentDialogTitle"),
@@ -336,6 +353,38 @@ function formatFileSize(bytes = 0) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function messagePreviewText(message, role = getRole(), settings = getSettings()) {
+  if (!message) return "";
+  if (message.isRevoked) return "撤回了一条消息";
+  if (message.type === "pat" || message.type === "system") return message.content || "系统消息";
+  if (message.type === "image") return message.fileName ? `[图片] ${message.fileName}` : "[图片]";
+  if (message.type === "file") return message.fileName ? `[文件] ${message.fileName}` : "[文件]";
+  return message.content || "";
+}
+
+function quoteAuthorName(message, role = getRole(), settings = getSettings()) {
+  if (!message) return "";
+  if (message.sender === "user") return settings.userName || "我";
+  if (message.sender === "role") return role.name;
+  return "系统";
+}
+
+function findQuoteMessage(messages = getChats(getCurrentRoleId()), messageId = state.quoteToMessageId) {
+  return messages.find((message) => message.id === messageId) || null;
+}
+
+function renderQuoteCard(message, messages, role, settings) {
+  const quote = findQuoteMessage(messages, message.quoteToMessageId);
+  if (!quote) return "";
+  const author = quoteAuthorName(quote, role, settings);
+  const text = messagePreviewText(quote, role, settings) || "原消息";
+  return `
+    <div class="quote-card">
+      <span>${escapeHTML(author)}：</span>${escapeHTML(text)}
+    </div>
+  `;
 }
 
 function delay(ms) {
@@ -430,7 +479,8 @@ function updateRecallRangeButton() {
   els.recallRangeBtn.textContent = `查记录：${label}`;
 }
 
-function renderMessageContent(msg) {
+function renderMessageContent(msg, messages = getChats(getCurrentRoleId()), role = getRole(), settings = getSettings()) {
+  const quoteCard = msg.quoteToMessageId ? renderQuoteCard(msg, messages, role, settings) : "";
   if (msg.isRevoked) {
     const canEdit = msg.sender === "user" && msg.type === "text" && msg.originalContent;
     return `你撤回了一条消息${canEdit ? ` <button class="reedit-message" data-message-id="${msg.id}" type="button">重新编辑</button>` : ""}`;
@@ -444,6 +494,7 @@ function renderMessageContent(msg) {
         <img src="${msg.dataUrl}" alt="${escapeHTML(msg.fileName || "图片")}">
         ${msg.fileName ? `<span>${escapeHTML(msg.fileName)}</span>` : ""}
       </div>
+      ${quoteCard}
     `;
   }
   if (msg.type === "file") {
@@ -455,9 +506,10 @@ function renderMessageContent(msg) {
           <small>${formatFileSize(msg.fileSize)}</small>
         </span>
       </div>
+      ${quoteCard}
     `;
   }
-  return escapeHTML(msg.content);
+  return `${escapeHTML(msg.content)}${quoteCard}`;
 }
 
 function closeAttachPanel() {
@@ -473,6 +525,34 @@ function toggleAttachPanel() {
 function closeMessageActionMenu() {
   state.messageActionMenu?.remove();
   state.messageActionMenu = null;
+}
+
+function updateQuoteReplyUI() {
+  if (!els.quoteReplyBar) return;
+  const role = getRole();
+  const settings = getSettings();
+  const quote = findQuoteMessage(getChats(role.id));
+  els.quoteReplyBar.classList.toggle("hidden", !quote);
+  if (!quote) return;
+  els.quoteReplyTitle.textContent = `引用 ${quoteAuthorName(quote, role, settings)}`;
+  els.quoteReplyText.textContent = messagePreviewText(quote, role, settings);
+}
+
+function startQuoteReply(messageId) {
+  const message = getChats(getCurrentRoleId()).find((item) => item.id === messageId);
+  if (!message || message.isRevoked || message.sender === "system" || message.type === "pat" || message.type === "system") return;
+  state.quoteToMessageId = messageId;
+  state.isSelectingMessages = false;
+  state.selectedMessageIds.clear();
+  cancelEditMessage();
+  closeAttachPanel();
+  renderMessages();
+  els.messageInput.focus();
+}
+
+function cancelQuoteReply() {
+  state.quoteToMessageId = "";
+  updateQuoteReplyUI();
 }
 
 function closeChatActionMenu() {
@@ -519,6 +599,7 @@ function handleApiError(error) {
 function openChat(roleId) {
   setCurrentRoleId(roleId);
   setUnread(roleId, 0);
+  state.quoteToMessageId = "";
   els.screens.forEach((screen) => screen.classList.remove("active"));
   els.chatInfo.classList.remove("active");
   els.chatDetail.classList.add("active");
@@ -542,6 +623,7 @@ function closeChatInfo() {
 }
 
 function closeChat() {
+  state.quoteToMessageId = "";
   els.chatDetail.classList.remove("active");
   els.chatInfo.classList.remove("active");
   els.tabbar.classList.remove("hidden");
@@ -995,7 +1077,9 @@ function renderMessages() {
   const messages = getChats(role.id);
   if (!messages.length) {
     els.messageList.innerHTML = `<div class="empty-state">你和 ${escapeHTML(role.name)} 还没有聊天。<br>像微信一样，直接发第一句就行。</div>`;
+    state.quoteToMessageId = "";
     updateMessageSelectionUI();
+    updateQuoteReplyUI();
     return;
   }
 
@@ -1015,7 +1099,7 @@ function renderMessages() {
         ${divider}
         <div class="message-row system ${selected ? "selected" : ""}" data-message-id="${msg.id}">
           ${state.isSelectingMessages ? `<button class="message-check ${selected ? "checked" : ""}" type="button" aria-label="选择消息"></button>` : ""}
-          <div class="system-bubble">${renderMessageContent(msg)}</div>
+          <div class="system-bubble">${renderMessageContent(msg, messages, role, settings)}</div>
         </div>
       `;
       }
@@ -1024,7 +1108,7 @@ function renderMessages() {
         <div class="message-row ${isUser ? "user" : "role"} ${selected ? "selected" : ""}" data-message-id="${msg.id}">
           ${state.isSelectingMessages ? `<button class="message-check ${selected ? "checked" : ""}" type="button" aria-label="选择消息"></button>` : ""}
           <img class="message-avatar" src="${avatar}" alt="头像">
-          <div class="bubble">${renderMessageContent(msg)}</div>
+          <div class="bubble">${renderMessageContent(msg, messages, role, settings)}</div>
           ${showBlockedWarning ? `<span class="blocked-exclaim" aria-label="对方知道自己被拉黑">!</span>` : ""}
         </div>
       `;
@@ -1035,6 +1119,7 @@ function renderMessages() {
     els.messageList.scrollTop = els.messageList.scrollHeight;
   });
   updateMessageSelectionUI();
+  updateQuoteReplyUI();
   bindMessageLongPress();
 }
 
@@ -1162,6 +1247,14 @@ function searchChatHistory(roleId, userText, options = {}) {
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
+function recentMessagesForReply(roleId, quoteToMessageId = "") {
+  const messages = getChats(roleId);
+  const recent = messages.slice(-18);
+  if (!quoteToMessageId || recent.some((message) => message.id === quoteToMessageId)) return recent;
+  const quote = messages.find((message) => message.id === quoteToMessageId);
+  return quote ? [quote, ...recent].slice(-19) : recent;
+}
+
 function buildRegenerationPlan(messages, messageId) {
   const selectedIndex = messages.findIndex((msg) => msg.id === messageId);
   if (selectedIndex < 0) return null;
@@ -1218,6 +1311,7 @@ function openMessageActionMenu(target, messageId) {
     buttons.push(`<button type="button" data-action="recall">撤回</button>`);
   }
   if (turn) buttons.push(`<button type="button" data-action="regenerate">重新生成</button>`);
+  if (!isSystem) buttons.push(`<button type="button" data-action="quote">引用</button>`);
   buttons.push(`<button type="button" data-action="select">多选</button>`);
   buttons.push(`<button type="button" data-action="delete">删除</button>`);
   if (!buttons.length) return;
@@ -1289,6 +1383,7 @@ function handleMessageAction(action, messageId) {
   if (action === "edit") return startEditMessage(messageId);
   if (action === "recall") return recallMessage(messageId);
   if (action === "regenerate") return regenerateReplyTurn(messageId);
+  if (action === "quote") return startQuoteReply(messageId);
   if (action === "select") return enterMessageSelection(messageId);
   if (action === "delete") return deleteSelectedMessages([messageId]);
 }
@@ -1308,6 +1403,7 @@ function startEditMessage(messageId, options = {}) {
   const message = getChats(getCurrentRoleId()).find((item) => item.id === messageId);
   if (!message || message.sender !== "user") return;
   state.editingMessageId = messageId;
+  state.quoteToMessageId = "";
   state.isSelectingMessages = false;
   state.selectedMessageIds.clear();
   els.messageInput.value = options.useOriginal ? message.originalContent || message.content : message.content;
@@ -1345,6 +1441,7 @@ function recallMessage(messageId) {
 function enterMessageSelection(messageId) {
   state.isSelectingMessages = true;
   state.selectedMessageIds = new Set([messageId]);
+  state.quoteToMessageId = "";
   closeAttachPanel();
   cancelEditMessage();
   renderMessages();
@@ -1433,7 +1530,8 @@ async function renderSelectedMessagesImage() {
   const role = getRole();
   const settings = getSettings();
   const selected = new Set(state.selectedMessageIds);
-  const messages = getChats(role.id).filter((message) => selected.has(message.id));
+  const allMessages = getChats(role.id);
+  const messages = allMessages.filter((message) => selected.has(message.id));
   if (!messages.length) return toast("先选择要截图的消息");
 
   const width = 430;
@@ -1443,6 +1541,7 @@ async function renderSelectedMessagesImage() {
   const measureCanvas = document.createElement("canvas");
   const measureCtx = measureCanvas.getContext("2d");
   measureCtx.font = "15px sans-serif";
+  const messageById = new Map(allMessages.map((message) => [message.id, message]));
   const rows = await Promise.all(messages.map(async (message) => {
     const text = message.isRevoked ? "你撤回了一条消息" : message.content || message.fileName || "";
     const isSystem = message.sender === "system" || message.type === "pat" || message.isRevoked;
@@ -1453,10 +1552,17 @@ async function renderSelectedMessagesImage() {
     const mediaHeight = imageWidth && imageHeight ? Math.min(170, Math.max(86, mediaWidth * (imageHeight / imageWidth))) : 0;
     const lines = wrapCanvasText(measureCtx, text, isSystem ? width - padding * 4 : maxBubbleWidth);
     const imageGap = image && lines.length ? 7 : 0;
+    const quote = message.quoteToMessageId ? messageById.get(message.quoteToMessageId) : null;
+    const quoteText = quote ? `${quoteAuthorName(quote, role, settings)}：${messagePreviewText(quote, role, settings)}` : "";
+    measureCtx.font = "12px sans-serif";
+    const quoteLines = quoteText ? wrapCanvasText(measureCtx, quoteText, maxBubbleWidth - 40).slice(0, 2) : [];
+    measureCtx.font = "15px sans-serif";
+    const quoteHeight = quoteLines.length ? quoteLines.length * 16 + 14 : 0;
+    const quoteGap = quoteLines.length ? 7 : 0;
     const height = isSystem
       ? Math.max(30, lines.length * 21 + 10)
-      : Math.max(48, lines.length * 21 + 20 + mediaHeight + imageGap);
-    return { message, text, lines, isSystem, image, mediaWidth, mediaHeight, imageGap, height };
+      : Math.max(48, lines.length * 21 + 20 + mediaHeight + imageGap + quoteHeight + quoteGap);
+    return { message, text, lines, isSystem, image, mediaWidth, mediaHeight, imageGap, quoteLines, quoteHeight, quoteGap, height };
   }));
   const [backgroundImage, userAvatarImage, roleAvatarImage] = await Promise.all([
     loadCanvasImage(role.chatBackground),
@@ -1502,7 +1608,10 @@ async function renderSelectedMessagesImage() {
       continue;
     }
 
-    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, row.mediaWidth || 0, ...lines.map((line) => ctx.measureText(line).width)) + 22);
+    ctx.font = "12px sans-serif";
+    const quoteWidth = row.quoteLines?.length ? Math.max(...row.quoteLines.map((line) => ctx.measureText(line).width)) + 34 : 0;
+    ctx.font = "15px sans-serif";
+    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, row.mediaWidth || 0, quoteWidth, ...lines.map((line) => ctx.measureText(line).width)) + 22);
     const bubbleX = isUser ? width - padding - bubbleWidth : padding + avatarSize + 8;
     const avatarX = isUser ? width - padding - avatarSize : padding;
     ctx.fillStyle = isUser ? "#95ec69" : "#fff";
@@ -1519,6 +1628,16 @@ async function renderSelectedMessagesImage() {
     if (row.image) {
       const imageY = y + 10 + lines.length * 21 + row.imageGap;
       drawRoundedCoverImage(ctx, row.image, bubbleX + 11, imageY, row.mediaWidth, row.mediaHeight, 5);
+    }
+    if (row.quoteLines?.length) {
+      const quoteY = y + 10 + lines.length * 21 + row.imageGap + row.mediaHeight + row.quoteGap;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+      roundRectPath(ctx, bubbleX + 11, quoteY, bubbleWidth - 22, row.quoteHeight, 3);
+      ctx.fill();
+      ctx.fillStyle = "#777";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "left";
+      row.quoteLines.forEach((line, index) => ctx.fillText(line, bubbleX + 19, quoteY + 16 + index * 16));
     }
     if (showBlockedWarning) {
       const markX = bubbleX + bubbleWidth + 14;
@@ -1632,8 +1751,10 @@ async function sendMessage() {
   }
   els.messageInput.value = "";
   autoResizeInput();
-  const sentMessage = addChat(roleId, { sender: "user", content: text, mode });
-  const recentMessages = getChats(roleId).slice(-18);
+  const quoteToMessageId = findQuoteMessage(getChats(roleId), state.quoteToMessageId)?.id || "";
+  state.quoteToMessageId = "";
+  const sentMessage = addChat(roleId, { sender: "user", content: text, mode, quoteToMessageId });
+  const recentMessages = recentMessagesForReply(roleId, quoteToMessageId);
   const recallTriggered = shouldRecallChatHistory(text);
   const recalledRange = resolveRecallRange(text);
   const recalledMessages = searchChatHistory(roleId, text, { excludeIds: [sentMessage.id], range: recalledRange });
@@ -1664,6 +1785,8 @@ async function sendLocalAttachment(file, type) {
   const isImage = type === "image";
   const content = isImage ? `[图片] ${file.name || "未命名图片"}` : `[文件] ${file.name || "未命名文件"}`;
   const dataUrl = isImage ? await readFileAsDataURL(file) : "";
+  const quoteToMessageId = findQuoteMessage(getChats(roleId), state.quoteToMessageId)?.id || "";
+  state.quoteToMessageId = "";
 
   closeAttachPanel();
   const sentMessage = addChat(roleId, {
@@ -1674,8 +1797,9 @@ async function sendLocalAttachment(file, type) {
     fileSize: file.size,
     dataUrl,
     mode,
+    quoteToMessageId,
   });
-  const recentMessages = getChats(roleId).slice(-18);
+  const recentMessages = recentMessagesForReply(roleId, quoteToMessageId);
   const recallTriggered = shouldRecallChatHistory(content);
   const recalledRange = resolveRecallRange(content);
   const recalledMessages = searchChatHistory(roleId, content, { excludeIds: [sentMessage.id], range: recalledRange });
@@ -2179,6 +2303,7 @@ function bindEvents() {
     renderMomentImageList();
   });
   els.cancelEditMessageBtn.addEventListener("click", cancelEditMessage);
+  els.cancelQuoteReplyBtn.addEventListener("click", cancelQuoteReply);
   els.cancelSelectMessagesBtn.addEventListener("click", cancelMessageSelection);
   els.deleteSelectedMessagesBtn.addEventListener("click", () => deleteSelectedMessages());
   els.shotSelectedMessagesBtn.addEventListener("click", renderSelectedMessagesImage);
