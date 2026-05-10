@@ -1,4 +1,4 @@
-const CACHE_NAME = "xiaoshouji-pwa-v21";
+const CACHE_NAME = "xiaoshouji-pwa-v22";
 
 const APP_SHELL = [
   "./",
@@ -7,8 +7,7 @@ const APP_SHELL = [
   "./css/style.css?v=13",
   "./css/moments-wechat-fix.css?v=1",
   "./js/ai.js?v=3",
-  "./js/main.js?v=17",
-  "./js/shot-fix.js?v=1",
+  "./js/main.js?v=18",
   "./js/memory.js",
   "./js/moments.js",
   "./js/prompt.js?v=2",
@@ -48,7 +47,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match("./index.html"))
+      fetch(event.request, { cache: "reload" }).catch(() => caches.match("./index.html"))
     );
     return;
   }
@@ -56,7 +55,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css") || url.pathname.endsWith(".webmanifest")) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "reload" })
         .then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
