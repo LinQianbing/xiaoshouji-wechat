@@ -1100,8 +1100,8 @@ function renderChatInfo() {
 
 function applyChatBackground(role = getRole()) {
   const background = role.chatBackground || "";
-  els.messageList.classList.toggle("custom-chat-bg", Boolean(background));
-  els.messageList.style.backgroundImage = background ? `url("${background}")` : "";
+  els.chatDetail.classList.toggle("custom-chat-bg", Boolean(background));
+  els.chatDetail.style.backgroundImage = background ? `url("${background}")` : "";
 }
 
 function renderMemoryEditList() {
