@@ -819,6 +819,7 @@ function renderContacts() {
 
 function renderMoments() {
   const settings = getSettings();
+  const userLikeName = settings.userName || "我";
   els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.momentsHeroName.textContent = `${settings.userName || "我"}的小手机`;
   const hero = $(".moments-hero");
@@ -834,6 +835,8 @@ function renderMoments() {
     .map((item) => {
       const comments = item.comments || [];
       const images = item.images || [];
+      const likedBy = Array.isArray(item.likedBy) ? item.likedBy : [];
+      const likeNames = likedBy.includes(USER_MOMENTS_ID) ? [userLikeName] : [];
       return `
         <article class="moment-card" data-role-id="${item.role.id}" data-moment-id="${item.id}">
           <img class="moment-avatar" src="${item.role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(item.role.name)}头像">
@@ -845,32 +848,49 @@ function renderMoments() {
               <time>${formatMomentTime(item.createdAt)}</time>
               ${item.location ? `<span>${escapeHTML(item.location)}</span>` : ""}
               ${item.visibility === "private" ? `<span>仅自己可见</span>` : ""}
-              <button class="like-moment" type="button">赞 ${item.likes || ""}</button>
-              <button class="comment-moment" type="button">评论</button>
+              <button class="moment-more-btn" type="button" aria-label="更多操作"></button>
             </div>
-            ${comments.length ? `<div class="comment-box">${comments.map((comment) => `<p><b>${escapeHTML(comment.userName)}：</b>${escapeHTML(comment.text)}</p>`).join("")}</div>` : ""}
+            ${
+              likeNames.length || comments.length
+                ? `<div class="comment-box moment-social">
+                    ${likeNames.length ? `<div class="moment-likes">♡ ${likeNames.map(escapeHTML).join("，")}</div>` : ""}
+                    ${
+                      comments.length
+                        ? `<div class="moment-comments">${comments
+                            .map((comment, index) => {
+                              const commentId = comment.id || `legacy_${index}`;
+                              const legacyReply = !comment.replyToName && String(comment.userName || "").includes(" 回复 ")
+                                ? String(comment.userName).split(" 回复 ")
+                                : null;
+                              const commentName = legacyReply ? legacyReply[0] : comment.userName;
+                              const targetName = comment.replyToName || legacyReply?.slice(1).join(" 回复 ") || "";
+                              const replyName = targetName ? ` 回复 <b>${escapeHTML(targetName)}</b>` : "";
+                              return `<p class="moment-comment-row" data-comment-id="${escapeHTML(commentId)}" data-comment-name="${escapeHTML(commentName)}"><b>${escapeHTML(commentName)}</b>${replyName}：${escapeHTML(comment.text)}</p>`;
+                            })
+                            .join("")}</div>`
+                        : ""
+                    }
+                  </div>`
+                : ""
+            }
           </div>
         </article>
       `;
     })
     .join("");
 
-  $$(".like-moment").forEach((btn) => {
-    btn.addEventListener("click", () => {
+  $$(".moment-more-btn").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
       const card = btn.closest(".moment-card");
-      likeMoment(card.dataset.roleId, card.dataset.momentId);
-      renderMoments();
+      openMomentInteractMenu(btn, card.dataset.roleId, card.dataset.momentId);
     });
   });
 
-  $$(".comment-moment").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const card = btn.closest(".moment-card");
-      const text = prompt("评论内容");
-      if (text) {
-        commentMoment(card.dataset.roleId, card.dataset.momentId, text, getSettings().userName || "我");
-        renderMoments();
-      }
+  $$(".moment-comment-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const card = row.closest(".moment-card");
+      addMomentComment(card.dataset.roleId, card.dataset.momentId, row.dataset.commentId, row.dataset.commentName);
     });
   });
   bindMomentActions();
@@ -885,7 +905,8 @@ function bindMomentActions() {
   $$(".moment-card").forEach((card) => {
     const roleId = card.dataset.roleId;
     const momentId = card.dataset.momentId;
-    card.addEventListener("pointerdown", () => {
+    card.addEventListener("pointerdown", (event) => {
+      if (event.target.closest(".moment-more-btn, .moment-comment-row")) return;
       clearTimeout(state.momentLongPressTimer);
       state.momentLongPressTimer = setTimeout(() => openMomentActionMenu(card, roleId, momentId), 560);
     });
@@ -897,6 +918,46 @@ function bindMomentActions() {
       openMomentActionMenu(card, roleId, momentId);
     });
   });
+}
+
+function addMomentComment(roleId, momentId, replyToCommentId = "", replyToName = "") {
+  const label = replyToName ? `回复 ${replyToName}` : "评论内容";
+  const text = prompt(label);
+  if (!text?.trim()) return;
+  commentMoment(roleId, momentId, text, getSettings().userName || "我", replyToCommentId, replyToName);
+  renderMoments();
+}
+
+function openMomentInteractMenu(target, roleId, momentId) {
+  const moment = getAllMoments().find((item) => item.id === momentId && item.role.id === roleId);
+  if (!moment) return;
+  closeMomentActionMenu();
+  const likedBy = Array.isArray(moment.likedBy) ? moment.likedBy : [];
+  const liked = likedBy.includes(USER_MOMENTS_ID);
+  const rect = target.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.className = "message-action-menu moment-action-menu moment-interact-menu";
+  menu.innerHTML = `
+    <button type="button" data-action="like">${liked ? "取消" : "赞"}</button>
+    <button type="button" data-action="comment">评论</button>
+  `;
+  document.body.appendChild(menu);
+  const left = rect.left - menu.offsetWidth - 8;
+  const useLeftSide = left >= 12;
+  menu.classList.toggle("from-right", useLeftSide);
+  menu.style.left = `${useLeftSide ? left : Math.min(window.innerWidth - menu.offsetWidth - 12, rect.right + 8)}px`;
+  menu.style.top = `${Math.min(window.innerHeight - menu.offsetHeight - 12, Math.max(12, rect.top + rect.height / 2 - menu.offsetHeight / 2))}px`;
+  menu.addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.action;
+    if (!action) return;
+    closeMomentActionMenu();
+    if (action === "like") {
+      likeMoment(roleId, momentId);
+      renderMoments();
+    }
+    if (action === "comment") addMomentComment(roleId, momentId);
+  });
+  state.momentActionMenu = menu;
 }
 
 function openMomentActionMenu(target, roleId, momentId) {
@@ -2171,7 +2232,7 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     if (event.target.closest(".message-row .bubble")) return;
     if (!event.target.closest(".message-action-menu")) closeMessageActionMenu();
-    if (!event.target.closest(".moment-action-menu")) closeMomentActionMenu();
+    if (!event.target.closest(".moment-action-menu, .moment-more-btn")) closeMomentActionMenu();
     if (!event.target.closest(".chat-action-menu")) closeChatActionMenu();
   });
   els.tabs.forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tabTarget)));
@@ -2415,7 +2476,7 @@ function bindEvents() {
   $("#changeMomentsCoverBtn").addEventListener("click", () => els.momentsCoverInput.click());
 
   $("#exportDataBtn").addEventListener("click", downloadJSON);
-  $("#exportTopBtn").addEventListener("click", downloadJSON);
+  $("#exportTopBtn")?.addEventListener("click", downloadJSON);
   els.installPwaBtn.addEventListener("click", handleInstallPwa);
   $("#importDataInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];

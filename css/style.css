@@ -780,6 +780,62 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.moment-interact-menu {
+  height: 40px;
+  min-width: 154px;
+  padding: 0 6px;
+  gap: 0;
+  border-radius: 5px;
+  background: #4c4c4c;
+  overflow: visible;
+}
+
+.moment-interact-menu::after {
+  left: auto;
+  right: -5px;
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 5px solid #4c4c4c;
+  border-right: 0;
+}
+
+.moment-interact-menu:not(.from-right)::after {
+  right: auto;
+  left: -5px;
+  border-left: 0;
+  border-right: 5px solid #4c4c4c;
+}
+
+.moment-interact-menu button {
+  flex: 1;
+  height: 30px;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.moment-interact-menu button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.moment-interact-menu button:first-child::before {
+  content: "♡";
+  font-size: 17px;
+  line-height: 1;
+}
+
+.moment-interact-menu button:last-child::before {
+  content: "▣";
+  transform: scaleX(1.16);
+  font-size: 12px;
+  line-height: 1;
+}
+
 .image-message {
   display: grid;
   gap: 6px;

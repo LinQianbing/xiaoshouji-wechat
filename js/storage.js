@@ -273,6 +273,7 @@ export function addMoment(roleId, moment) {
     createdAt: moment.createdAt || nowISO(),
     updatedAt: moment.updatedAt || "",
     likes: Number(moment.likes ?? 0),
+    likedBy: Array.isArray(moment.likedBy) ? moment.likedBy : [],
     comments: Array.isArray(moment.comments) ? moment.comments : [],
   };
   setMoments(roleId, [normalized, ...items]);

@@ -88,25 +88,39 @@ export function getAllMoments() {
 export function likeMoment(roleId, momentId) {
   const item = getMoments(roleId).find((moment) => moment.id === momentId);
   if (!item) return;
-  updateMoment(roleId, momentId, { likes: Number(item.likes || 0) + 1 });
+  const likedBy = Array.isArray(item.likedBy) ? item.likedBy : [];
+  const nextLikedBy = likedBy.includes(USER_MOMENTS_ID)
+    ? likedBy.filter((id) => id !== USER_MOMENTS_ID)
+    : [...likedBy, USER_MOMENTS_ID];
+  updateMoment(roleId, momentId, { likedBy: nextLikedBy, likes: nextLikedBy.length });
 }
 
-export function commentMoment(roleId, momentId, text, userName = "我") {
+export function commentMoment(roleId, momentId, text, userName = "我", replyToCommentId = "", replyToName = "") {
   const item = getMoments(roleId).find((moment) => moment.id === momentId);
   const commentText = text?.trim();
   if (!item || !commentText) return;
+  const replyTo = replyToCommentId ? (item.comments || []).find((comment) => comment.id === replyToCommentId) : null;
+  const replyTargetName = replyTo?.userName || replyToName || "";
 
   const comments = [
     ...(item.comments || []),
-    { userName, text: commentText, createdAt: new Date().toISOString() },
+    {
+      id: `comment_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      userName,
+      text: commentText,
+      replyToName: replyTargetName,
+      createdAt: new Date().toISOString(),
+    },
   ];
 
   if (roleId !== USER_MOMENTS_ID && item.authorType !== "user") {
     const role = getRole(roleId);
     const replyText = pickMomentReply(role, commentText);
     comments.push({
-      userName: `${role.name} 回复 ${userName}`,
+      id: `comment_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      userName: role.name,
       text: replyText,
+      replyToName: userName,
       createdAt: new Date(Date.now() + 800).toISOString(),
       isRoleReply: true,
     });
