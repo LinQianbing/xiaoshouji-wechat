@@ -9,6 +9,7 @@
   --white: #ffffff;
   --danger: #fa5151;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-height: 100svh;
 }
 
 * {
@@ -19,10 +20,11 @@ html,
 body {
   margin: 0;
   width: 100%;
-  min-height: 100%;
+  height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--text);
   background: #d8d8d8;
+  overflow: hidden;
 }
 
 button,
@@ -50,7 +52,8 @@ input[type="range"] {
 }
 
 .desktop-bg {
-  min-height: 100dvh;
+  height: var(--app-height);
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,8 +64,9 @@ input[type="range"] {
 .phone-frame {
   position: relative;
   width: min(430px, 100vw);
-  height: min(932px, calc(100dvh - 36px));
-  min-height: 680px;
+  height: min(932px, calc(var(--app-height) - 36px));
+  min-height: min(680px, calc(var(--app-height) - 36px));
+  max-height: calc(var(--app-height) - 36px);
   overflow: hidden;
   background: var(--wechat-bg);
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -73,12 +77,15 @@ input[type="range"] {
 @media (max-width: 520px), (display-mode: standalone) {
   html,
   body {
-    min-height: 100dvh;
+    height: var(--app-height);
+    min-height: 0;
     background: var(--wechat-bg);
+    overflow: hidden;
   }
 
   .desktop-bg {
-    min-height: 100dvh;
+    height: var(--app-height);
+    min-height: 0;
     display: block;
     padding: 0;
     background: var(--wechat-bg);
@@ -86,8 +93,9 @@ input[type="range"] {
 
   .phone-frame {
     width: 100vw;
-    height: 100dvh;
-    min-height: 100dvh;
+    height: var(--app-height);
+    min-height: 0;
+    max-height: none;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -99,6 +107,7 @@ input[type="range"] {
   inset: 0;
   display: none;
   flex-direction: column;
+  min-height: 0;
   background: var(--wechat-bg);
   padding-bottom: calc(58px + var(--safe-bottom));
 }
@@ -281,6 +290,7 @@ input[type="range"] {
 .me-page,
 .moments-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -583,6 +593,7 @@ input[type="range"] {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px 12px 18px;
   background-color: var(--wechat-bg);
@@ -1867,6 +1878,7 @@ input[type="range"] {
 
 .chat-info-page {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: 28px;
   -webkit-overflow-scrolling: touch;
@@ -1999,14 +2011,17 @@ input[type="range"] {
 @media (max-width: 600px) {
   .desktop-bg {
     display: block;
+    height: var(--app-height);
+    min-height: 0;
     padding: 0;
     background: var(--wechat-bg);
   }
 
   .phone-frame {
     width: 100vw;
-    height: 100dvh;
+    height: var(--app-height);
     min-height: 0;
+    max-height: none;
     border: 0;
     border-radius: 0;
     box-shadow: none;

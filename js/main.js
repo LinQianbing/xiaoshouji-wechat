@@ -46,6 +46,11 @@ import {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+function syncViewportHeight() {
+  const height = Math.floor(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
+  if (height > 0) document.documentElement.style.setProperty("--app-height", `${height}px`);
+}
+
 const state = {
   activeTab: "chats",
   editingRoleId: null,
@@ -2513,8 +2518,13 @@ function tickClock() {
 }
 
 function bootstrap() {
+  syncViewportHeight();
   initStore();
   ensureRuntimeUI();
+  window.addEventListener("resize", syncViewportHeight);
+  window.addEventListener("orientationchange", syncViewportHeight);
+  window.visualViewport?.addEventListener("resize", syncViewportHeight);
+  window.visualViewport?.addEventListener("scroll", syncViewportHeight);
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.installPromptEvent = event;
