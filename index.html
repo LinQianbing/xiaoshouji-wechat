@@ -10,7 +10,7 @@
     <title>小手机 MVP</title>
     <link rel="manifest" href="manifest.webmanifest?v=10" />
     <link rel="apple-touch-icon" href="assets/pwa/icon-180.png?v=10" />
-    <link rel="stylesheet" href="css/style.css?v=11" />
+    <link rel="stylesheet" href="css/style.css?v=12" />
   </head>
   <body>
     <div class="desktop-bg">
@@ -118,8 +118,14 @@
 
             <section class="settings-group">
               <h2>聊天背景</h2>
-              <button class="plain-row" id="changeChatBgBtn" type="button">更换当前聊天背景</button>
-              <button class="plain-row" id="clearChatBgBtn" type="button">恢复默认背景</button>
+              <button class="chat-bg-row" id="changeChatBgBtn" type="button">
+                <span>设置当前聊天背景</span>
+                <span class="chat-bg-meta">
+                  <i class="chat-bg-preview" id="chatBgPreview" aria-hidden="true"></i>
+                  <em id="chatBgStatus">默认</em>
+                </span>
+              </button>
+              <button class="plain-row chat-bg-clear hidden" id="clearChatBgBtn" type="button">恢复默认背景</button>
               <input id="chatBgInput" type="file" accept="image/*" hidden />
               <p class="setting-note">只影响当前联系人，选中消息截图也会使用这个背景。</p>
             </section>
@@ -340,7 +346,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=14"></script>
+    <script type="module" src="js/main.js?v=15"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;

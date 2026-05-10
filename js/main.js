@@ -126,6 +126,8 @@ const els = {
   chatBgInput: $("#chatBgInput"),
   changeChatBgBtn: $("#changeChatBgBtn"),
   clearChatBgBtn: $("#clearChatBgBtn"),
+  chatBgPreview: $("#chatBgPreview"),
+  chatBgStatus: $("#chatBgStatus"),
   newMemoryInput: $("#newMemoryInput"),
   memoryEditList: $("#memoryEditList"),
 
@@ -1024,16 +1026,18 @@ function renderChatInfo() {
   $("#infoProfileChatBtn")?.addEventListener("click", closeChatInfo);
   els.pinChatInput.checked = Boolean(role.isPinned);
   els.blockChatInput.checked = Boolean(role.isBlocked);
-  els.clearChatBgBtn.disabled = !role.chatBackground;
+  const hasChatBackground = Boolean(role.chatBackground);
+  els.clearChatBgBtn.classList.toggle("hidden", !hasChatBackground);
+  els.chatBgPreview.classList.toggle("has-image", hasChatBackground);
+  els.chatBgPreview.style.backgroundImage = hasChatBackground ? `url("${role.chatBackground}")` : "";
+  els.chatBgStatus.textContent = hasChatBackground ? "已设置" : "默认";
   renderMemoryEditList();
 }
 
 function applyChatBackground(role = getRole()) {
   const background = role.chatBackground || "";
   els.messageList.classList.toggle("custom-chat-bg", Boolean(background));
-  els.messageList.style.backgroundImage = background
-    ? `linear-gradient(rgba(237, 237, 237, 0.46), rgba(237, 237, 237, 0.46)), url("${background}")`
-    : "";
+  els.messageList.style.backgroundImage = background ? `url("${background}")` : "";
 }
 
 function renderMemoryEditList() {
@@ -2224,7 +2228,12 @@ function bindEvents() {
     event.target.value = "";
     if (!file) return;
     const role = getRole();
-    saveRole({ ...role, chatBackground: await readFileAsDataURL(file) });
+    const chatBackground = await readFileAsDataURL(file);
+    saveRole({ ...role, chatBackground });
+    els.chatBgPreview.classList.add("has-image");
+    els.chatBgPreview.style.backgroundImage = `url("${chatBackground}")`;
+    els.chatBgStatus.textContent = "已设置";
+    els.clearChatBgBtn.classList.remove("hidden");
     renderChatInfo();
     renderChatDetail();
     toast("聊天背景已更换");
