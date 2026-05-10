@@ -30,7 +30,7 @@ import {
   updateChat,
 } from "./storage.js?v=2";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=3";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=4";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
@@ -1619,6 +1619,10 @@ function createPatMessage(actor = "user") {
   }
 }
 
+function wantsRolePat(text = "") {
+  return /(?:拍(?:拍|一拍)?我|拍拍我|主动拍|怎么不拍|为什么不拍|不拍我)/.test(String(text));
+}
+
 function wrapCanvasText(ctx, text, maxWidth) {
   const lines = [];
   for (const paragraph of String(text || "").split("\n")) {
@@ -2166,7 +2170,7 @@ async function appendModelReply({
       renderMessages();
       renderChatList();
     }
-    if (reply.shouldPat) {
+    if (reply.shouldPat || wantsRolePat(userText)) {
       await delay(420);
       addPatChat(roleId, "role", role, settings);
       renderMessages();
@@ -2386,7 +2390,7 @@ async function createProactiveMessage() {
   const role = getRole();
   const roleId = role.id;
   const mode = getCurrentMode();
-  const userText = "你现在想主动找我说句话。像真的微信联系人一样发来一条短消息，可以是随口一句、想起我了、接着上次的话说，别解释为什么发。";
+  const userText = "你现在想主动找我说句话。像真的微信联系人一样发来一条短消息，可以是随口一句、想起我了、接着上次的话说，别解释为什么发。你也可以先把 shouldPat 设为 true 拍一拍我，再发消息。";
   closeAttachPanel();
   state.sending = true;
   els.proactiveBanner.classList.add("hidden");

@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=2";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=3";
 
 const REQUEST_TIMEOUT_MS = 45000;
 
