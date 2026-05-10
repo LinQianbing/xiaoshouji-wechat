@@ -32,6 +32,10 @@ function recentMessagesText(messages = [], roleName = "TA") {
   return messages
     .slice(-16)
     .map((msg) => {
+      if (msg.type === "pat") {
+        const action = msg.patActor === "user" ? "用户拍了拍你" : msg.patActor === "role" ? "你拍了拍用户" : "拍一拍";
+        return `系统动作：${action}（${msg.content}）`;
+      }
       const quote = msg.quoteToMessageId ? byId.get(msg.quoteToMessageId) : null;
       const quoteText = quote ? `（引用${quote.sender === "user" ? "我" : roleName}：${quote.content || quote.fileName || "一条消息"}）` : "";
       return `${msg.sender === "user" ? "我" : roleName}：${msg.content}${quoteText}`;
@@ -66,11 +70,12 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "如果【查到的旧聊天记录】里有内容，你可以像翻到聊天记录一样自然提到原话和大概时间；如果没查到，不要假装记得。",
     "旧聊天记录只用于回答用户问的旧事，不要把它机械复述成清单，除非用户明确要求列出来。",
     "如果【聊天状态】显示你被用户拉黑，你知道这件事，但仍然可以发消息；可以表现出着急、委屈、试探或想解释，不要假装什么都没发生。",
+    "如果最近聊天里出现拍一拍动作，你能知道是谁拍了谁；你也可以按心情把 shouldPat 设为 true 主动拍一拍用户，但不要频繁使用。",
     talkLevelRule(settings.talkLevel),
     modeRule(mode),
     "可以参考当前时间，但别机械报时，也别套早安/吃饭/早点睡模板。",
     "输出必须是合法 JSON，不要在 JSON 外输出任何解释。",
-    "JSON 格式：{\"messages\":[\"第一条短消息\",\"第二条短消息\"],\"mood\":\"normal\",\"shouldRemember\":false,\"memoryCandidate\":\"\"}",
+    "JSON 格式：{\"messages\":[\"第一条短消息\",\"第二条短消息\"],\"mood\":\"normal\",\"shouldPat\":false,\"shouldRemember\":false,\"memoryCandidate\":\"\"}",
     "messages 必须是字符串数组；每条是一条聊天气泡。",
   ].join("\n");
 

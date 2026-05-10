@@ -10,7 +10,7 @@
     <title>小手机 MVP</title>
     <link rel="manifest" href="manifest.webmanifest?v=10" />
     <link rel="apple-touch-icon" href="assets/pwa/icon-180.png?v=10" />
-    <link rel="stylesheet" href="css/style.css?v=12" />
+    <link rel="stylesheet" href="css/style.css?v=13" />
   </head>
   <body>
     <div class="desktop-bg">
@@ -239,6 +239,10 @@
                 <span>话唠程度 <b id="talkLevelText">Lv5</b></span>
                 <input id="talkLevelInput" type="range" min="1" max="10" step="1" />
               </label>
+              <label class="setting-row">
+                <span>我的拍一拍</span>
+                <input id="userPatSuffixInput" type="text" maxlength="24" placeholder="例如：的肩膀" />
+              </label>
               <label class="switch-row">
                 <span>允许主动消息</span>
                 <input id="allowProactiveInput" type="checkbox" />
@@ -312,6 +316,10 @@
             <span>资料备注</span>
             <textarea id="roleDescInput" rows="8" placeholder="写性格、关系、说话习惯、背景、喜欢或讨厌什么。"></textarea>
           </label>
+          <label>
+            <span>拍一拍后缀</span>
+            <input id="rolePatSuffixInput" type="text" maxlength="24" placeholder="例如：的脑袋" />
+          </label>
           <button class="delete-role-btn hidden" id="deleteRoleBtn" type="button">删除联系人</button>
         </div>
       </form>
@@ -346,7 +354,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=15"></script>
+    <script type="module" src="js/main.js?v=16"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;

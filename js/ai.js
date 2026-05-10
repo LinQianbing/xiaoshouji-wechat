@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=2";
 
 const REQUEST_TIMEOUT_MS = 45000;
 
@@ -111,6 +111,7 @@ export async function generateChatReply(payload) {
   return {
     messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).slice(0, 6) : [String(parsed.message || "嗯嗯，我在。")],
     mood: parsed.mood || "normal",
+    shouldPat: Boolean(parsed.shouldPat),
     shouldRemember: Boolean(parsed.shouldRemember),
     memoryCandidate: parsed.memoryCandidate || "",
   };

@@ -28,9 +28,9 @@ import {
   setMemories,
   setUnread,
   updateChat,
-} from "./storage.js";
+} from "./storage.js?v=2";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=2";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=3";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
@@ -109,6 +109,7 @@ const els = {
   roleNameInput: $("#roleNameInput"),
   roleGenderInput: $("#roleGenderInput"),
   roleDescInput: $("#roleDescInput"),
+  rolePatSuffixInput: $("#rolePatSuffixInput"),
   roleAvatarInput: $("#roleAvatarInput"),
   roleAvatarPreview: $("#roleAvatarPreview"),
   deleteRoleBtn: $("#deleteRoleBtn"),
@@ -138,6 +139,7 @@ const els = {
   userAvatarInput: $("#userAvatarInput"),
   userNameInput: $("#userNameInput"),
   userPersonaInput: $("#userPersonaInput"),
+  userPatSuffixInput: $("#userPatSuffixInput"),
   apiKeyInput: $("#apiKeyInput"),
   apiBaseInput: $("#apiBaseInput"),
   modelInput: $("#modelInput"),
@@ -999,6 +1001,7 @@ function renderMe() {
   els.meAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.userNameInput.value = settings.userName || "";
   els.userPersonaInput.value = settings.userPersona || "";
+  els.userPatSuffixInput.value = settings.patSuffix || "";
   els.apiKeyInput.value = settings.apiKey || "";
   els.apiBaseInput.value = settings.apiBase || "";
   els.modelInput.value = settings.model || "";
@@ -1386,7 +1389,9 @@ function bindMessageLongPress() {
       event.stopPropagation();
       startEditMessage(messageId, { useOriginal: true });
     });
-    avatar?.addEventListener("dblclick", () => createPatMessage("user"));
+    if (row.classList.contains("role")) {
+      avatar?.addEventListener("dblclick", () => createPatMessage("user"));
+    }
     if (!pressTarget) return;
 
     pressTarget.addEventListener("pointerdown", () => {
@@ -1507,20 +1512,44 @@ function deleteSelectedMessages(messageIds = Array.from(state.selectedMessageIds
   toast("已删除");
 }
 
+function normalizePatSuffix(value) {
+  return String(value || "").trim().slice(0, 24);
+}
+
+function formatPatContent(actor, role = getRole(), settings = getSettings()) {
+  if (actor === "role") return `${role.name}拍了拍你${normalizePatSuffix(settings.patSuffix)}`;
+  return `你拍了拍${role.name}${normalizePatSuffix(role.patSuffix)}`;
+}
+
+function addPatChat(roleId, actor, role = getRole(roleId), settings = getSettings()) {
+  return addChat(roleId, {
+    sender: "system",
+    type: "pat",
+    content: formatPatContent(actor, role, settings),
+    patActor: actor,
+    mode: getCurrentMode(),
+  });
+}
+
 function createPatMessage(actor = "user") {
   const role = getRole();
   const roleId = role.id;
-  const content = actor === "role" ? `${role.name}拍了拍你` : `你拍了拍${role.name}`;
-  addChat(roleId, {
-    sender: "system",
-    type: "pat",
-    content,
-    mode: getCurrentMode(),
-  });
+  const settings = getSettings();
+  addPatChat(roleId, actor, role, settings);
   closeAttachPanel();
   renderMessages();
   renderChatList();
   navigator.vibrate?.(12);
+  if (actor === "user" && isApiReady(settings)) {
+    queueModelReply({
+      role,
+      settings,
+      mode: getCurrentMode(),
+      roleId,
+      recentMessages: getChats(roleId).slice(-18),
+      userText: `我刚刚拍了拍你${normalizePatSuffix(role.patSuffix)}。这是拍一拍动作，可以自然回应。`,
+    });
+  }
 }
 
 function wrapCanvasText(ctx, text, maxWidth) {
@@ -1731,6 +1760,13 @@ async function appendModelReply({
       });
       renderMessages();
       renderChatList();
+    }
+    if (reply.shouldPat) {
+      await delay(420);
+      addPatChat(roleId, "role", role, settings);
+      renderMessages();
+      renderChatList();
+      navigator.vibrate?.(10);
     }
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       rememberText(roleId, reply.memoryCandidate, 4, 4, { source: "chat", confidence: 0.72 });
@@ -1976,6 +2012,7 @@ function openRoleDialog(roleId = null, options = {}) {
   els.roleNameInput.value = role?.name || "";
   els.roleGenderInput.value = role?.gender || "未设定";
   els.roleDescInput.value = role?.description || "";
+  els.rolePatSuffixInput.value = role?.patSuffix || "";
   els.roleAvatarPreview.src = role?.avatar || DEFAULT_ROLE_AVATAR;
   els.deleteRoleBtn.classList.toggle("hidden", !role);
   showDialog(els.roleDialog);
@@ -2001,6 +2038,7 @@ function saveRoleFromForm(event) {
     gender: els.roleGenderInput.value,
     avatar: els.roleAvatarPreview.src || DEFAULT_ROLE_AVATAR,
     description: els.roleDescInput.value,
+    patSuffix: els.rolePatSuffixInput.value.trim(),
     isPinned: existing?.isPinned,
     isBlocked: existing?.isBlocked,
     chatBackground: existing?.chatBackground,
@@ -2034,6 +2072,7 @@ function saveMeSettingFromInputs() {
   saveSettings({
     userName: els.userNameInput.value.trim() || "我",
     userPersona: els.userPersonaInput.value.trim(),
+    patSuffix: els.userPatSuffixInput.value.trim(),
     apiKey: els.apiKeyInput.value.trim(),
     apiBase: els.apiBaseInput.value.trim() || "https://api.openai.com/v1/chat/completions",
     model: els.modelInput.value.trim() || "gpt-4o-mini",
@@ -2343,6 +2382,7 @@ function bindEvents() {
   [
     els.userNameInput,
     els.userPersonaInput,
+    els.userPatSuffixInput,
     els.apiKeyInput,
     els.apiBaseInput,
     els.modelInput,
