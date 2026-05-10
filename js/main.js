@@ -1649,6 +1649,320 @@ function roundRectPath(ctx, x, y, width, height, radius) {
 }
 
 async function renderSelectedMessagesImage() {
+  try {
+    await renderSelectedMessagesDomImage();
+  } catch (error) {
+    console.warn("DOM screenshot failed, falling back to canvas screenshot", error);
+    await renderSelectedMessagesCanvasImage();
+  }
+}
+
+function absoluteAssetUrl(src = "") {
+  if (!src) return "";
+  if (/^(data:|blob:|https?:)/i.test(src)) return src;
+  try {
+    return new URL(src, window.location.href).href;
+  } catch {
+    return src;
+  }
+}
+
+function readBlobAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function assetToDataUrl(src = "") {
+  if (!src) return "";
+  if (/^data:/i.test(src)) return src;
+  const url = absoluteAssetUrl(src);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Asset request failed: ${response.status}`);
+    return await readBlobAsDataURL(await response.blob());
+  } catch {
+    return url;
+  }
+}
+
+function renderShotMessageRows(messages, allMessages, role, settings, shotAssets) {
+  let lastDivider = "";
+  return messages
+    .map((msg) => {
+      const time = formatChatTime(msg.createdAt);
+      const divider = time !== lastDivider ? `<div class="time-divider">${escapeHTML(time)}</div>` : "";
+      lastDivider = time;
+      const isUser = msg.sender === "user";
+      const isSystem = msg.sender === "system" || msg.isRevoked || msg.type === "pat" || msg.type === "system";
+      const avatar = isUser ? shotAssets.userAvatar : shotAssets.roleAvatar;
+      const content = renderMessageContent(msg, allMessages, role, settings);
+      if (isSystem) {
+        return `
+          ${divider}
+          <div class="message-row system">
+            <div class="system-bubble">${content}</div>
+          </div>
+        `;
+      }
+      return `
+        ${divider}
+        <div class="message-row ${isUser ? "user" : "role"}">
+          <img class="message-avatar" src="${avatar}" alt="">
+          <div class="bubble">${content}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function renderSelectedMessagesDomImage() {
+  const role = getRole();
+  const settings = getSettings();
+  const selected = new Set(state.selectedMessageIds);
+  const allMessages = getChats(role.id);
+  const messages = allMessages.filter((message) => selected.has(message.id));
+  if (!messages.length) {
+    toast("先选择要截图的消息");
+    return;
+  }
+
+  const width = 430;
+  const scale = 2;
+  const [background, userAvatar, roleAvatar] = await Promise.all([
+    assetToDataUrl(role.chatBackground),
+    assetToDataUrl(settings.userAvatar || DEFAULT_USER_AVATAR),
+    assetToDataUrl(role.avatar || DEFAULT_ROLE_AVATAR),
+  ]);
+  const shotAssets = { userAvatar, roleAvatar };
+  const capture = document.createElement("div");
+  capture.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  capture.className = "shot-capture";
+  capture.style.width = `${width}px`;
+  capture.style.position = "fixed";
+  capture.style.left = "-10000px";
+  capture.style.top = "0";
+  if (background) {
+    capture.style.backgroundImage = `linear-gradient(rgba(237, 237, 237, 0.46), rgba(237, 237, 237, 0.46)), url("${background}")`;
+  }
+
+  const shotCss = `
+    .shot-capture, .shot-capture * { box-sizing: border-box; }
+    .shot-capture {
+      width: ${width}px;
+      min-height: 1px;
+      overflow: hidden;
+      background-color: #ededed;
+      background-size: cover;
+      background-position: center;
+      color: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .shot-header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 58px;
+      background: rgba(237, 237, 237, 0.94);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.2;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .shot-body { padding: 12px 12px 18px; }
+    .time-divider {
+      width: fit-content;
+      max-width: 70%;
+      margin: 12px auto;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.18);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1.35;
+      text-align: center;
+    }
+    .message-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .message-row.user { flex-direction: row-reverse; }
+    .message-row.system {
+      justify-content: center;
+      align-items: center;
+    }
+    .message-avatar {
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      border-radius: 7px;
+      object-fit: cover;
+      background: #d8d8d8;
+    }
+    .bubble {
+      position: relative;
+      max-width: calc(100% - 86px);
+      min-height: 34px;
+      padding: 8px 10px;
+      border-radius: 5px;
+      background: #fff;
+      font-size: 15px;
+      line-height: 1.45;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .message-row.role .bubble::before {
+      content: "";
+      position: absolute;
+      left: -5px;
+      top: 12px;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-right: 6px solid #fff;
+    }
+    .message-row.user .bubble {
+      background: #95ec69;
+    }
+    .message-row.user .bubble::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: 12px;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 6px solid #95ec69;
+    }
+    .system-bubble {
+      max-width: 82%;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.18);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .system-bubble button {
+      margin-left: 4px;
+      border: 0;
+      background: transparent;
+      color: #576b95;
+      font-size: 12px;
+    }
+    .quote-card {
+      margin-top: 7px;
+      padding: 6px 8px;
+      border-left: 3px solid rgba(0, 0, 0, 0.18);
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.06);
+      color: #777;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .quote-card span { color: #576b95; }
+    .image-message {
+      display: grid;
+      gap: 6px;
+    }
+    .image-message img {
+      display: block;
+      width: min(220px, 100%);
+      max-height: 260px;
+      border-radius: 6px;
+      object-fit: cover;
+    }
+    .image-message span,
+    .file-message small {
+      color: #777;
+      font-size: 12px;
+    }
+    .file-message {
+      min-width: 180px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .file-message span:last-child {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+    .file-message b {
+      max-width: 160px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-weight: 500;
+    }
+    .file-glyph {
+      position: relative;
+      flex: 0 0 34px;
+      width: 34px;
+      height: 38px;
+      border-radius: 4px;
+      background: #fff;
+      border: 1px solid #d8d8d8;
+    }
+  `;
+
+  capture.innerHTML = `
+    <style>${shotCss}</style>
+    <div class="shot-header">${escapeHTML(role.name)}</div>
+    <div class="shot-body">${renderShotMessageRows(messages, allMessages, role, settings, shotAssets)}</div>
+  `;
+
+  let appended = false;
+  try {
+    document.body.appendChild(capture);
+    appended = true;
+    if (document.fonts?.ready) await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const height = Math.ceil(capture.scrollHeight);
+    capture.style.height = `${height}px`;
+    const exportNode = capture.cloneNode(true);
+    exportNode.style.position = "static";
+    exportNode.style.left = "0";
+    exportNode.style.top = "0";
+    exportNode.style.height = `${height}px`;
+    const serialized = new XMLSerializer().serializeToString(exportNode);
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}" viewBox="0 0 ${width} ${height}">
+        <foreignObject width="100%" height="100%">${serialized}</foreignObject>
+      </svg>
+    `;
+    const image = await loadCanvasImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+    if (!image) throw new Error("Unable to render screenshot SVG");
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.drawImage(image, 0, 0, width, height);
+    const url = canvas.toDataURL("image/png");
+    els.shotPreview.src = url;
+    els.downloadShotLink.href = url;
+    showDialog(els.shotDialog);
+  } finally {
+    if (appended) capture.remove();
+  }
+}
+
+async function renderSelectedMessagesCanvasImage() {
   const role = getRole();
   const settings = getSettings();
   const selected = new Set(state.selectedMessageIds);
@@ -1660,10 +1974,17 @@ async function renderSelectedMessagesImage() {
   const padding = 18;
   const avatarSize = 38;
   const avatarGap = 8;
-  const maxBubbleWidth = width - padding * 2 - avatarSize - avatarGap - 76;
+  const bubblePadX = 11;
+  const bubblePadY = 10;
+  const textLineHeight = 22;
+  const quoteLineHeight = 16;
+  const maxBubbleWidth = width - padding * 2 - avatarSize - avatarGap - 40;
+  const textMaxWidth = maxBubbleWidth - bubblePadX * 2;
   const measureCanvas = document.createElement("canvas");
   const measureCtx = measureCanvas.getContext("2d");
-  measureCtx.font = "15px sans-serif";
+  const textFont = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+  const quoteFont = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+  measureCtx.font = textFont;
   const messageById = new Map(allMessages.map((message) => [message.id, message]));
   const rows = await Promise.all(messages.map(async (message) => {
     const text = message.isRevoked ? "你撤回了一条消息" : message.content || message.fileName || "";
@@ -1671,20 +1992,20 @@ async function renderSelectedMessagesImage() {
     const image = message.type === "image" && message.dataUrl ? await loadCanvasImage(message.dataUrl) : null;
     const imageWidth = image ? image.naturalWidth || image.width : 0;
     const imageHeight = image ? image.naturalHeight || image.height : 0;
-    const mediaWidth = image ? Math.min(190, maxBubbleWidth - 22) : 0;
+    const mediaWidth = image ? Math.min(190, textMaxWidth) : 0;
     const mediaHeight = imageWidth && imageHeight ? Math.min(170, Math.max(86, mediaWidth * (imageHeight / imageWidth))) : 0;
-    const lines = wrapCanvasText(measureCtx, text, isSystem ? width - padding * 4 : maxBubbleWidth);
+    const lines = wrapCanvasText(measureCtx, text, isSystem ? width - padding * 4 : textMaxWidth);
     const imageGap = image && lines.length ? 7 : 0;
     const quote = message.quoteToMessageId ? messageById.get(message.quoteToMessageId) : null;
     const quoteText = quote ? `${quoteAuthorName(quote, role, settings)}：${messagePreviewText(quote, role, settings)}` : "";
-    measureCtx.font = "12px sans-serif";
-    const quoteLines = quoteText ? wrapCanvasText(measureCtx, quoteText, maxBubbleWidth - 40).slice(0, 2) : [];
-    measureCtx.font = "15px sans-serif";
-    const quoteHeight = quoteLines.length ? quoteLines.length * 16 + 14 : 0;
+    measureCtx.font = quoteFont;
+    const quoteLines = quoteText ? wrapCanvasText(measureCtx, quoteText, textMaxWidth - 18).slice(0, 2) : [];
+    measureCtx.font = textFont;
+    const quoteHeight = quoteLines.length ? quoteLines.length * quoteLineHeight + 14 : 0;
     const quoteGap = quoteLines.length ? 7 : 0;
     const height = isSystem
-      ? Math.max(30, lines.length * 21 + 10)
-      : Math.max(48, lines.length * 21 + 20 + mediaHeight + imageGap + quoteHeight + quoteGap);
+      ? Math.max(30, lines.length * 20 + 10)
+      : Math.max(48, lines.length * textLineHeight + bubblePadY * 2 + mediaHeight + imageGap + quoteHeight + quoteGap);
     return { message, text, lines, isSystem, image, mediaWidth, mediaHeight, imageGap, quoteLines, quoteHeight, quoteGap, height };
   }));
   const [backgroundImage, userAvatarImage, roleAvatarImage] = await Promise.all([
@@ -1729,37 +2050,54 @@ async function renderSelectedMessagesImage() {
       continue;
     }
 
-    ctx.font = "12px sans-serif";
+    ctx.font = quoteFont;
     const quoteWidth = row.quoteLines?.length ? Math.max(...row.quoteLines.map((line) => ctx.measureText(line).width)) + 34 : 0;
-    ctx.font = "15px sans-serif";
-    const bubbleWidth = Math.min(maxBubbleWidth, Math.max(44, row.mediaWidth || 0, quoteWidth, ...lines.map((line) => ctx.measureText(line).width)) + 22);
+    ctx.font = textFont;
+    const textWidth = lines.length ? Math.max(...lines.map((line) => ctx.measureText(line).width)) : 0;
+    const contentWidth = Math.max(44, row.mediaWidth || 0, quoteWidth, textWidth);
+    const bubbleWidth = Math.min(maxBubbleWidth, Math.ceil(contentWidth + bubblePadX * 2));
     const avatarX = isUser ? width - padding - avatarSize : padding;
     const bubbleX = isUser ? avatarX - avatarGap - bubbleWidth : padding + avatarSize + avatarGap;
     ctx.fillStyle = isUser ? "#95ec69" : "#fff";
     roundRectPath(ctx, bubbleX, y, bubbleWidth, row.height, 5);
     ctx.fill();
+    if (isUser) {
+      ctx.beginPath();
+      ctx.moveTo(bubbleX + bubbleWidth, y + 12);
+      ctx.lineTo(bubbleX + bubbleWidth + 6, y + 17);
+      ctx.lineTo(bubbleX + bubbleWidth, y + 22);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(bubbleX, y + 12);
+      ctx.lineTo(bubbleX - 6, y + 17);
+      ctx.lineTo(bubbleX, y + 22);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.fillStyle = "#d8d8d8";
     roundRectPath(ctx, avatarX, y, avatarSize, avatarSize, 7);
     ctx.fill();
     const avatarDrawn = drawRoundedCoverImage(ctx, isUser ? userAvatarImage : roleAvatarImage, avatarX, y, avatarSize, avatarSize, 7);
     if (!avatarDrawn) drawFallbackAvatar(ctx, isUser ? settings.userName || "我" : role.name, avatarX, y, avatarSize, 7, isUser);
     ctx.fillStyle = "#111";
-    ctx.font = "15px sans-serif";
+    ctx.font = textFont;
     ctx.textAlign = "left";
-    lines.forEach((line, index) => ctx.fillText(line, bubbleX + 11, y + 22 + index * 21));
+    lines.forEach((line, index) => ctx.fillText(line, bubbleX + bubblePadX, y + 22 + index * textLineHeight));
     if (row.image) {
-      const imageY = y + 10 + lines.length * 21 + row.imageGap;
-      drawRoundedCoverImage(ctx, row.image, bubbleX + 11, imageY, row.mediaWidth, row.mediaHeight, 5);
+      const imageY = y + bubblePadY + lines.length * textLineHeight + row.imageGap;
+      drawRoundedCoverImage(ctx, row.image, bubbleX + bubblePadX, imageY, row.mediaWidth, row.mediaHeight, 5);
     }
     if (row.quoteLines?.length) {
-      const quoteY = y + 10 + lines.length * 21 + row.imageGap + row.mediaHeight + row.quoteGap;
+      const quoteY = y + bubblePadY + lines.length * textLineHeight + row.imageGap + row.mediaHeight + row.quoteGap;
       ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
-      roundRectPath(ctx, bubbleX + 11, quoteY, bubbleWidth - 22, row.quoteHeight, 3);
+      roundRectPath(ctx, bubbleX + bubblePadX, quoteY, bubbleWidth - bubblePadX * 2, row.quoteHeight, 3);
       ctx.fill();
       ctx.fillStyle = "#777";
-      ctx.font = "12px sans-serif";
+      ctx.font = quoteFont;
       ctx.textAlign = "left";
-      row.quoteLines.forEach((line, index) => ctx.fillText(line, bubbleX + 19, quoteY + 16 + index * 16));
+      row.quoteLines.forEach((line, index) => ctx.fillText(line, bubbleX + bubblePadX + 8, quoteY + 16 + index * quoteLineHeight));
     }
     if (showBlockedWarning) {
       const markX = Math.min(width - padding - 9, bubbleX + bubbleWidth + 14);

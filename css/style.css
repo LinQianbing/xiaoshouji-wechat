@@ -626,10 +626,6 @@ input[type="range"] {
   flex-direction: row-reverse;
 }
 
-.message-row.user .message-avatar {
-  display: none;
-}
-
 .blocked-exclaim {
   flex: 0 0 18px;
   width: 18px;
