@@ -1351,10 +1351,30 @@ function recentMessagesForReply(roleId, quoteToMessageId = "") {
   return quote ? [quote, ...recent].slice(-19) : recent;
 }
 
+function isRolePatMessage(message) {
+  return message?.type === "pat" && message.patActor === "role";
+}
+
+function isRegenerableTail(messages, startIndex) {
+  return messages.slice(startIndex).every(isRolePatMessage);
+}
+
 function buildRegenerationPlan(messages, messageId) {
-  const selectedIndex = messages.findIndex((msg) => msg.id === messageId);
+  let selectedIndex = messages.findIndex((msg) => msg.id === messageId);
   if (selectedIndex < 0) return null;
-  const selected = messages[selectedIndex];
+  let selected = messages[selectedIndex];
+  if (isRolePatMessage(selected)) {
+    let previousRoleIndex = -1;
+    for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+      if (messages[index].sender === "role") {
+        previousRoleIndex = index;
+        break;
+      }
+    }
+    if (previousRoleIndex < 0) return null;
+    selectedIndex = previousRoleIndex;
+    selected = messages[selectedIndex];
+  }
   if (selected.sender !== "role") return null;
 
   if (selected.replyGroupId) {
@@ -1363,7 +1383,7 @@ function buildRegenerationPlan(messages, messageId) {
       .filter((index) => index >= 0);
     const firstGroupIndex = Math.min(...groupIndexes);
     const lastGroupIndex = Math.max(...groupIndexes);
-    if (lastGroupIndex !== messages.length - 1) return null;
+    if (!isRegenerableTail(messages, lastGroupIndex + 1)) return null;
 
     const keptMessages = messages.slice(0, firstGroupIndex);
     const replyTo = selected.replyToMessageId ? messages.find((msg) => msg.id === selected.replyToMessageId) : null;

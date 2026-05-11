@@ -1,4 +1,4 @@
-const CACHE_NAME = "xiaoshouji-pwa-v29";
+const CACHE_NAME = "xiaoshouji-pwa-v30";
 
 const APP_SHELL = [
   "./",
@@ -7,7 +7,7 @@ const APP_SHELL = [
   "./css/style.css?v=18",
   "./css/moments-wechat-fix.css?v=2",
   "./js/ai.js?v=5",
-  "./js/main.js?v=25",
+  "./js/main.js?v=26",
   "./js/memory.js",
   "./js/moments.js",
   "./js/prompt.js?v=4",
