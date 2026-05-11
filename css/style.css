@@ -1151,18 +1151,18 @@ input[type="range"] {
 
 .moments-hero-profile {
   position: absolute;
-  inset: 0;
+  right: 94px;
+  bottom: 32px;
+  z-index: 4;
+  width: min(220px, calc(100% - 124px));
+  text-align: right;
   pointer-events: none;
 }
 
 .moments-hero-profile strong {
-  position: absolute;
-  right: 92px;
-  bottom: 34px;
-  z-index: 2;
   display: block;
-  max-width: 172px;
-  font-size: 16px;
+  width: 100%;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.2;
   text-align: right;
@@ -1174,15 +1174,15 @@ input[type="range"] {
 
 .moments-hero-profile p {
   position: absolute;
-  right: 18px;
-  top: calc(100% + 10px);
+  right: -76px;
+  top: 80px;
   z-index: 4;
   margin: 0;
-  max-width: 190px;
+  width: 124px;
   color: #8c8c8c;
   font-size: 12px;
   line-height: 1.15;
-  text-align: right;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1202,7 +1202,7 @@ input[type="range"] {
 
 .moments-list {
   background: #fff;
-  padding-top: 54px;
+  padding-top: 96px;
 }
 
 .moment-card {
