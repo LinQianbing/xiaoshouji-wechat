@@ -1128,7 +1128,7 @@ input[type="range"] {
 .moments-hero {
   position: relative;
   height: 216px;
-  padding: 136px 16px 20px;
+  padding: 126px 16px 22px;
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
@@ -1155,7 +1155,7 @@ input[type="range"] {
 
 .moments-hero-profile {
   min-width: 0;
-  max-width: calc(100% - 84px);
+  max-width: calc(100% - 98px);
   text-align: right;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
@@ -1170,15 +1170,13 @@ input[type="range"] {
   white-space: nowrap;
 }
 
-.moments-hero-signature {
-  position: absolute;
-  left: 16px;
-  right: 98px;
-  bottom: 20px;
-  margin: 0;
+.moments-hero-profile p {
+  margin: 5px 0 0;
+  max-width: 180px;
   color: rgba(255, 255, 255, 0.94);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.25;
+  text-align: right;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.34);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1186,8 +1184,11 @@ input[type="range"] {
 }
 
 .moments-hero img {
+  position: relative;
+  bottom: -22px;
   width: 66px;
   height: 66px;
+  margin: 0;
   border: 2px solid #fff;
   border-radius: 6px;
 }
