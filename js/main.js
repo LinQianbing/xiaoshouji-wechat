@@ -30,7 +30,7 @@ import {
   updateChat,
 } from "./storage.js?v=2";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=5";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=6";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
@@ -2194,7 +2194,7 @@ async function appendModelReply({
     typing.remove();
     for (let index = 0; index < reply.messages.length; index += 1) {
       const message = reply.messages[index];
-      await delay(Math.min(950, 320 + String(message).length * 18 + index * 140));
+      if (index > 0) await delay(Math.min(950, 320 + String(message).length * 18 + index * 140));
       addChat(roleId, {
         sender: "role",
         content: String(message).trim(),
