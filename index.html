@@ -10,7 +10,7 @@
     <title>小手机 MVP</title>
     <link rel="manifest" href="manifest.webmanifest?v=10" />
     <link rel="apple-touch-icon" href="assets/pwa/icon-180.png?v=10" />
-    <link rel="stylesheet" href="css/style.css?v=20" />
+    <link rel="stylesheet" href="css/style.css?v=21" />
     <link rel="stylesheet" href="css/moments-wechat-fix.css?v=2" />
   </head>
   <body>
@@ -239,6 +239,10 @@
                 <input id="talkLevelInput" type="range" min="1" max="10" step="1" />
               </label>
               <label class="setting-row">
+                <span>个性签名</span>
+                <input id="profileSignatureInput" type="text" maxlength="40" placeholder="展示在朋友圈封面" />
+              </label>
+              <label class="setting-row">
                 <span>我的拍一拍</span>
                 <input id="userPatSuffixInput" type="text" maxlength="24" placeholder="例如：的肩膀" />
               </label>
@@ -353,7 +357,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=30"></script>
+    <script type="module" src="js/main.js?v=31"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;

@@ -1170,6 +1170,21 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.moments-hero-signature {
+  position: absolute;
+  left: 16px;
+  right: 98px;
+  bottom: 20px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  line-height: 1.35;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .moments-hero img {
   width: 66px;
   height: 66px;

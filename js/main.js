@@ -28,7 +28,7 @@ import {
   setMemories,
   setUnread,
   updateChat,
-} from "./storage.js?v=2";
+} from "./storage.js?v=3";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
 import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=7";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
@@ -144,6 +144,7 @@ const els = {
   userAvatarInput: $("#userAvatarInput"),
   userNameInput: $("#userNameInput"),
   userPersonaInput: $("#userPersonaInput"),
+  profileSignatureInput: $("#profileSignatureInput"),
   userPatSuffixInput: $("#userPatSuffixInput"),
   apiKeyInput: $("#apiKeyInput"),
   apiBaseInput: $("#apiBaseInput"),
@@ -828,6 +829,15 @@ function renderMoments() {
   const userLikeName = settings.userName || "我";
   els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.momentsHeroName.textContent = settings.userName || "我";
+  const existingSignature = $(".moments-hero-signature");
+  existingSignature?.remove();
+  const signature = String(settings.profileSignature || "").trim();
+  if (signature) {
+    const signatureEl = document.createElement("p");
+    signatureEl.className = "moments-hero-signature";
+    signatureEl.textContent = signature;
+    $(".moments-hero").appendChild(signatureEl);
+  }
   const hero = $(".moments-hero");
   hero.style.backgroundImage = settings.momentsCover
     ? `linear-gradient(180deg, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.52)), url("${settings.momentsCover}")`
@@ -1068,6 +1078,7 @@ function renderMe() {
   els.meAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.userNameInput.value = settings.userName || "";
   els.userPersonaInput.value = settings.userPersona || "";
+  els.profileSignatureInput.value = settings.profileSignature || "";
   els.userPatSuffixInput.value = settings.patSuffix || "";
   els.apiKeyInput.value = settings.apiKey || "";
   els.apiBaseInput.value = settings.apiBase || "";
@@ -2518,6 +2529,7 @@ function saveMeSettingFromInputs() {
   saveSettings({
     userName: els.userNameInput.value.trim() || "我",
     userPersona: els.userPersonaInput.value.trim(),
+    profileSignature: els.profileSignatureInput.value.trim(),
     patSuffix: els.userPatSuffixInput.value.trim(),
     apiKey: els.apiKeyInput.value.trim(),
     apiBase: els.apiBaseInput.value.trim() || "https://api.openai.com/v1/chat/completions",
@@ -2835,6 +2847,7 @@ function bindEvents() {
   [
     els.userNameInput,
     els.userPersonaInput,
+    els.profileSignatureInput,
     els.userPatSuffixInput,
     els.apiKeyInput,
     els.apiBaseInput,

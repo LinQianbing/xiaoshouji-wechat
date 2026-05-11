@@ -23,6 +23,7 @@ const defaultSettings = {
   model: "gpt-4o-mini",
   availableModels: [],
   userPersona: "",
+  profileSignature: "",
   patSuffix: "",
   momentsCover: "",
   talkLevel: 5,
