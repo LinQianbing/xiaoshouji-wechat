@@ -140,6 +140,7 @@ const els = {
   meAvatar: $("#meAvatar"),
   momentsUserAvatar: $("#momentsUserAvatar"),
   momentsHeroName: $("#momentsHeroName"),
+  momentsHeroSignature: $("#momentsHeroSignature"),
   momentsCoverInput: $("#momentsCoverInput"),
   userAvatarInput: $("#userAvatarInput"),
   userNameInput: $("#userNameInput"),
@@ -827,7 +828,10 @@ function renderMoments() {
   const settings = getSettings();
   const userLikeName = settings.userName || "我";
   els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
-  els.momentsHeroName.textContent = `${settings.userName || "我"}的小手机`;
+  els.momentsHeroName.textContent = settings.userName || "我";
+  const signature = String(settings.userPersona || "").trim().split(/\n/)[0].slice(0, 32);
+  els.momentsHeroSignature.textContent = signature;
+  els.momentsHeroSignature.classList.toggle("hidden", !signature);
   const hero = $(".moments-hero");
   hero.style.backgroundImage = settings.momentsCover
     ? `linear-gradient(180deg, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.52)), url("${settings.momentsCover}")`

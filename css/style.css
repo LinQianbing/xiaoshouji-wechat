@@ -1127,15 +1127,15 @@ input[type="range"] {
 
 .moments-hero {
   position: relative;
-  height: 190px;
-  padding: 118px 18px 18px;
+  height: 216px;
+  padding: 136px 16px 20px;
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
-  gap: 12px;
+  gap: 10px;
   color: #fff;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.48)),
     linear-gradient(135deg, #8aa6a3, #5d716a 45%, #3c4640);
   background-size: cover;
   background-position: center;
@@ -1153,24 +1153,38 @@ input[type="range"] {
   font-size: 12px;
 }
 
-.moments-hero div {
+.moments-hero-profile {
+  min-width: 0;
+  max-width: calc(100% - 84px);
   text-align: right;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
 
-.moments-hero p {
-  margin: 0 0 3px;
-  font-size: 13px;
+.moments-hero-profile strong {
+  display: block;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.moments-hero strong {
-  font-size: 18px;
+.moments-hero-profile p {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .moments-hero img {
-  width: 58px;
-  height: 58px;
+  width: 66px;
+  height: 66px;
   border: 2px solid #fff;
+  border-radius: 6px;
 }
 
 .moments-list {
@@ -1378,6 +1392,11 @@ input[type="range"] {
   align-items: center;
   gap: 16px;
   background: #fff;
+}
+
+.me-card > div {
+  min-width: 0;
+  flex: 1;
 }
 
 .me-card img,
