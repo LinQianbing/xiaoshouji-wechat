@@ -1170,16 +1170,6 @@ input[type="range"] {
   white-space: nowrap;
 }
 
-.moments-hero-profile p {
-  margin: 6px 0 0;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 13px;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .moments-hero img {
   width: 66px;
   height: 66px;
