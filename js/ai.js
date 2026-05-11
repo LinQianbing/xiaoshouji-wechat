@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=4";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=5";
 
 const REQUEST_TIMEOUT_MS = 60000;
 
@@ -76,6 +76,15 @@ async function callChatCompletions(settings, messages, temperature = 0.85) {
   return data.choices?.[0]?.message?.content || "";
 }
 
+function chatMessageLimit(talkLevel = 5) {
+  const level = Number(talkLevel) || 5;
+  if (level <= 2) return 2;
+  if (level <= 4) return 2;
+  if (level <= 6) return 3;
+  if (level <= 8) return 4;
+  return 5;
+}
+
 export async function fetchAvailableModels(settings) {
   if (!settings.apiKey?.trim()) throw new ApiNotConfiguredError("还没有填写 API Key，请先到“我 → AI 设置”填写。");
   const res = await fetchWithReadableError(modelsEndpoint(settings.apiBase), {
@@ -108,8 +117,9 @@ export async function generateChatReply(payload) {
   const prompt = buildChatPrompt(payload);
   const raw = await callChatCompletions(settings, prompt, 1.15);
   const parsed = extractJSON(raw);
+  const limit = chatMessageLimit(settings.talkLevel);
   return {
-    messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).slice(0, 6) : [String(parsed.message || "嗯嗯，我在。")],
+    messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).filter((item) => item.trim()).slice(0, limit) : [String(parsed.message || "嗯嗯，我在。")],
     mood: parsed.mood || "normal",
     shouldPat: Boolean(parsed.shouldPat),
     shouldRemember: Boolean(parsed.shouldRemember),

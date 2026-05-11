@@ -30,7 +30,7 @@ import {
   updateChat,
 } from "./storage.js?v=2";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=6";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=7";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
