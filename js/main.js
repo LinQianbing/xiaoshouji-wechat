@@ -41,7 +41,7 @@ import {
   getAllMoments,
   likeMoment,
   updateUserMoment,
-} from "./moments.js?v=2";
+} from "./moments.js?v=3";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));

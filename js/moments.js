@@ -71,6 +71,7 @@ function buildAutoInteractionsForUserMoment({ content, visibility, mentions = []
   const commenters = (mentionedRoles.length ? mentionedRoles : audience).slice(0, mentionedRoles.length ? 4 : 2);
   const comments = commenters.map((role, index) => ({
     id: `comment_${Date.now().toString(36)}_${role.id}_${Math.random().toString(36).slice(2, 6)}`,
+    roleId: role.id,
     userName: role.name,
     text: pickUserMomentComment(role, content),
     replyToName: "",
@@ -78,6 +79,16 @@ function buildAutoInteractionsForUserMoment({ content, visibility, mentions = []
     isRoleReply: true,
   }));
   return { likedBy, comments };
+}
+
+function findReplyTargetRole(comment, fallbackName = "") {
+  const roles = getRoles();
+  if (comment?.roleId) {
+    const byId = roles.find((role) => role.id === comment.roleId);
+    if (byId) return byId;
+  }
+  const name = comment?.userName || fallbackName;
+  return roles.find((role) => role.name === name) || null;
 }
 
 export async function createMomentForRole(roleId = getCurrentRoleId()) {
@@ -165,12 +176,28 @@ export function commentMoment(roleId, momentId, text, userName = "我", replyToC
     const replyText = pickMomentReply(role, commentText);
     comments.push({
       id: `comment_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      roleId: role.id,
       userName: role.name,
       text: replyText,
       replyToName: userName,
       createdAt: new Date(Date.now() + 800).toISOString(),
       isRoleReply: true,
     });
+  }
+
+  if (roleId === USER_MOMENTS_ID && item.authorType === "user" && replyTo) {
+    const role = findReplyTargetRole(replyTo, replyTargetName);
+    if (role && userName !== role.name) {
+      comments.push({
+        id: `comment_${Date.now().toString(36)}_${role.id}_${Math.random().toString(36).slice(2, 8)}`,
+        roleId: role.id,
+        userName: role.name,
+        text: pickMomentReply(role, commentText),
+        replyToName: userName,
+        createdAt: new Date(Date.now() + 800).toISOString(),
+        isRoleReply: true,
+      });
+    }
   }
 
   updateMoment(roleId, momentId, { comments });
