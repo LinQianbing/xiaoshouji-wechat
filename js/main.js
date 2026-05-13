@@ -973,8 +973,16 @@ function openMomentInteractMenu(target, roleId, momentId) {
 
 function openMomentActionMenu(target, roleId, momentId) {
   const moment = getAllMoments().find((item) => item.id === momentId && item.role.id === roleId);
-  if (!moment || moment.authorType !== "user") return;
+  if (!moment) return;
   closeMomentActionMenu();
+  if (moment.authorType !== "user") {
+    if (confirm("删除这条朋友圈？")) {
+      deleteMoment(roleId, momentId);
+      renderMoments();
+      toast("已删除");
+    }
+    return;
+  }
   const rect = target.getBoundingClientRect();
   const menu = document.createElement("div");
   menu.className = "message-action-menu moment-action-menu";
