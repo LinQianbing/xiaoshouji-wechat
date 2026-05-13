@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt } from "./prompt.js?v=5";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=6";
 
 const REQUEST_TIMEOUT_MS = 60000;
 
@@ -133,6 +133,18 @@ export async function generateMoment(payload) {
   const raw = await callChatCompletions(settings, buildMomentPrompt(payload), 0.86);
   const parsed = extractJSON(raw);
   return { content: String(parsed.content || "今天也冒个泡。") };
+}
+
+export async function generateMomentReaction(payload) {
+  const { settings } = payload;
+  if (!isApiReady(settings)) throw new ApiNotConfiguredError();
+  const raw = await callChatCompletions(settings, buildMomentReactionPrompt(payload), 1.02);
+  const parsed = extractJSON(raw);
+  return {
+    comment: String(parsed.comment || "").trim().slice(0, 80),
+    message: String(parsed.message || "").trim().slice(0, 140),
+    memoryCandidate: String(parsed.memoryCandidate || "").trim().slice(0, 140),
+  };
 }
 
 export async function summarizeMemories(payload) {

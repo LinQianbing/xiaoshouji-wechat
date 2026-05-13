@@ -182,6 +182,54 @@ export function buildMomentPrompt({ role, settings, recentMessages, memories }) 
   ];
 }
 
+export function buildMomentReactionPrompt({ role, settings, moment, memories = [], recentMessages = [], mentioned = false }) {
+  const time = getTimeContext();
+  return [
+    {
+      role: "system",
+      content: [
+        "你正在扮演用户微信里的一个真实联系人。你刚刷到了用户发的一条朋友圈。",
+        "不要用模板，不要客套复述，不要像助手。根据角色设定、你们的关系、长期记忆、最近聊天和朋友圈内容做自然反应。",
+        "你要同时生成两种东西：1）朋友圈下面的一条短评论；2）看完朋友圈后私聊用户的一条微信消息。",
+        "评论要像微信朋友圈里的真人评论：短、口语、有个人反应，可以调侃、关心、接梗、吐槽或只轻轻留一句。",
+        "私聊消息要像这个联系人真的点进微信来找用户说话，可以比评论更具体一点，但仍然是一条短微信气泡。",
+        "如果用户在朋友圈里提醒了你看，可以表现出你知道自己被点名了，但不要机械说“我被提醒了”。",
+        "不要输出解释。只输出合法 JSON。",
+        "JSON 格式：{\"comment\":\"朋友圈评论\",\"message\":\"私聊消息\",\"memoryCandidate\":\"值得记住的事实，没有就空字符串\"}",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        "【角色设定】",
+        `名字：${role.name}`,
+        `性别：${role.gender || "未设定"}`,
+        `设定：${role.description || "用户还没有填写详细设定。不要自行脑补太多背景。"}`,
+        "",
+        "【用户信息】",
+        `用户昵称：${settings.userName || "我"}`,
+        `用户人设：${settings.userPersona || "用户还没有填写自己的人设。"}`,
+        "",
+        "【当前时间】",
+        `${time.date} ${time.weekday} ${time.time}，${time.period}`,
+        "",
+        "【朋友圈内容】",
+        `正文：${moment.content || "（只有图片或空文字）"}`,
+        `位置：${moment.location || "无"}`,
+        `是否提醒你看：${mentioned ? "是" : "否"}`,
+        `提醒名单：${moment.mentions?.length ? moment.mentions.join("、") : "无"}`,
+        `图片数量：${moment.images?.length || 0}`,
+        "",
+        "【长期记忆】",
+        memoryText(memories).slice(0, 900),
+        "",
+        "【最近微信聊天】",
+        recentMessagesText(recentMessages, role.name).slice(0, 1300),
+      ].join("\n"),
+    },
+  ];
+}
+
 export function buildMemoryPrompt({ role, recentMessages, existing = [] }) {
   return [
     {

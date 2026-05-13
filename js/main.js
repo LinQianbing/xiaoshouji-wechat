@@ -28,9 +28,9 @@ import {
   setMemories,
   setUnread,
   updateChat,
-} from "./storage.js?v=3";
+} from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, isApiReady } from "./ai.js?v=7";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=8";
 import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
 import {
   USER_MOMENTS_ID,
@@ -41,7 +41,7 @@ import {
   getAllMoments,
   likeMoment,
   updateUserMoment,
-} from "./moments.js?v=3";
+} from "./moments.js?v=4";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -1133,6 +1133,61 @@ function closeMomentEditor() {
   closeDialog(els.momentDialog);
 }
 
+async function generateUserMomentReactions(moment) {
+  const settings = getSettings();
+  if (!settings.allowMoments || !isApiReady(settings) || moment.visibility === "private") return;
+  const roleIds = Array.isArray(moment.reactionRoleIds) ? moment.reactionRoleIds : [];
+  if (!roleIds.length) return;
+
+  const mentioned = new Set((moment.mentions || []).map((name) => String(name).trim()).filter(Boolean));
+  const comments = [...(moment.comments || [])];
+  for (const roleId of roleIds) {
+    const role = getRole(roleId);
+    if (!role || role.id !== roleId || role.isBlocked) continue;
+    try {
+      const reaction = await generateMomentReaction({
+        role,
+        settings,
+        moment,
+        mentioned: mentioned.has(role.name),
+        memories: selectRelevantMemories(getMemories(role.id), moment.content, getChats(role.id).slice(-18)),
+        recentMessages: getChats(role.id).slice(-18),
+      });
+      if (reaction.comment) {
+        comments.push({
+          id: `comment_${Date.now().toString(36)}_${role.id}_${Math.random().toString(36).slice(2, 8)}`,
+          roleId: role.id,
+          userName: role.name,
+          text: reaction.comment,
+          replyToName: "",
+          createdAt: new Date().toISOString(),
+          isRoleReply: true,
+        });
+        updateUserMoment(moment.id, { comments: [...comments] });
+        renderMoments();
+      }
+      if (reaction.message) {
+        addChat(role.id, {
+          sender: "role",
+          content: reaction.message,
+          mode: getCurrentMode(),
+        });
+        if (getCurrentRoleId() !== role.id || !els.chatDetail.classList.contains("active")) {
+          setUnread(role.id, (getUnread()[role.id] || 0) + 1);
+        }
+      }
+      const memoryText = reaction.memoryCandidate || `用户发过一条朋友圈：${moment.content || "（无文字）"}`;
+      if (settings.allowMemory) {
+        rememberText(role.id, memoryText, 4, 4, { source: "moment", confidence: 0.76 });
+      }
+      renderChatList();
+      if (els.chatDetail.classList.contains("active") && getCurrentRoleId() === role.id) renderChatDetail();
+    } catch (error) {
+      console.warn("moment reaction failed", error);
+    }
+  }
+}
+
 function saveMomentFromForm(event) {
   event.preventDefault();
   const payload = {
@@ -1145,7 +1200,10 @@ function saveMomentFromForm(event) {
   try {
     const wasEditing = Boolean(state.editingMomentId);
     if (state.editingMomentId) updateUserMoment(state.editingMomentId, payload);
-    else createUserMoment(payload);
+    else {
+      const created = createUserMoment(payload);
+      generateUserMomentReactions(created);
+    }
     closeMomentEditor();
     switchTab("moments");
     toast(wasEditing ? "朋友圈已更新" : "已发表");

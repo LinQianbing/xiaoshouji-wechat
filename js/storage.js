@@ -276,6 +276,7 @@ export function addMoment(roleId, moment) {
     likes: Number(moment.likes ?? 0),
     likedBy: Array.isArray(moment.likedBy) ? moment.likedBy : [],
     comments: Array.isArray(moment.comments) ? moment.comments : [],
+    reactionRoleIds: Array.isArray(moment.reactionRoleIds) ? moment.reactionRoleIds : [],
   };
   setMoments(roleId, [normalized, ...items]);
   return normalized;
