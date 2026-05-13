@@ -41,7 +41,7 @@ import {
   getAllMoments,
   likeMoment,
   updateUserMoment,
-} from "./moments.js";
+} from "./moments.js?v=2";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -845,6 +845,7 @@ function renderContacts() {
 function renderMoments() {
   const settings = getSettings();
   const userLikeName = settings.userName || "我";
+  const roleNameById = new Map(getRoles().map((role) => [role.id, role.name || "未命名联系人"]));
   els.momentsUserAvatar.src = settings.userAvatar || DEFAULT_USER_AVATAR;
   els.momentsHeroName.textContent = settings.userName || "我";
   const signature = String(settings.profileSignature || "").trim();
@@ -864,7 +865,9 @@ function renderMoments() {
       const comments = item.comments || [];
       const images = item.images || [];
       const likedBy = Array.isArray(item.likedBy) ? item.likedBy : [];
-      const likeNames = likedBy.includes(USER_MOMENTS_ID) ? [userLikeName] : [];
+      const likeNames = likedBy
+        .map((id) => (id === USER_MOMENTS_ID ? userLikeName : roleNameById.get(id)))
+        .filter(Boolean);
       return `
         <article class="moment-card" data-role-id="${item.role.id}" data-moment-id="${item.id}">
           <img class="moment-avatar" src="${item.role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(item.role.name)}头像">
@@ -937,16 +940,27 @@ function bindMomentActions() {
     card.addEventListener("pointerdown", (event) => {
       if (event.target.closest(".moment-more-btn, .moment-comment-row")) return;
       clearTimeout(state.momentLongPressTimer);
-      state.momentLongPressTimer = setTimeout(() => openMomentActionMenu(card, roleId, momentId), 560);
+      state.momentLongPressTimer = setTimeout(() => confirmDeleteMoment(roleId, momentId), 560);
     });
     card.addEventListener("pointerup", () => clearTimeout(state.momentLongPressTimer));
     card.addEventListener("pointerleave", () => clearTimeout(state.momentLongPressTimer));
     card.addEventListener("pointercancel", () => clearTimeout(state.momentLongPressTimer));
     card.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      openMomentActionMenu(card, roleId, momentId);
+      confirmDeleteMoment(roleId, momentId);
     });
   });
+}
+
+function confirmDeleteMoment(roleId, momentId) {
+  const moment = getAllMoments().find((item) => item.id === momentId && item.role.id === roleId);
+  if (!moment) return;
+  closeMomentActionMenu();
+  if (confirm("删除这条朋友圈？")) {
+    deleteMoment(roleId, momentId);
+    renderMoments();
+    toast("已删除");
+  }
 }
 
 function addMomentComment(roleId, momentId, replyToCommentId = "", replyToName = "") {

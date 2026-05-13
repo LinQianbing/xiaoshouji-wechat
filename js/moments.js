@@ -37,6 +37,49 @@ function pickMomentReply(role, text = "") {
   return MOMENT_REPLY_TEMPLATES[seed % MOMENT_REPLY_TEMPLATES.length];
 }
 
+const USER_MOMENT_COMMENT_TEMPLATES = [
+  "看到了。",
+  "这条我赞同。",
+  "你这会儿还挺有精神。",
+  "不错，给你点一下。",
+  "我刚好刷到。",
+  "这条留名。",
+  "嗯，记住了。",
+  "有点像你会发的。",
+];
+
+function pickUserMomentComment(role, content = "") {
+  const value = String(content).trim();
+  if (/累|困|睡|熬夜|晚安|不想动/.test(value)) return "早点休息，别硬撑。";
+  if (/开心|高兴|好耶|快乐|舒服/.test(value)) return "看出来你心情不错。";
+  if (/烦|难受|生气|崩|哭|委屈/.test(value)) return "我在，别自己憋着。";
+  if (/好看|照片|自拍|拍/.test(value)) return "这张可以。";
+  if (/吃|饭|奶茶|咖啡|甜/.test(value)) return "下次带我一个。";
+  const seed = [...value].reduce((sum, ch) => sum + ch.charCodeAt(0), role?.name?.length || 0);
+  return USER_MOMENT_COMMENT_TEMPLATES[seed % USER_MOMENT_COMMENT_TEMPLATES.length];
+}
+
+function buildAutoInteractionsForUserMoment({ content, visibility, mentions = [] }) {
+  if (visibility === "private") return { likedBy: [], comments: [] };
+  const roles = getRoles().filter((role) => !role.isBlocked);
+  if (!roles.length) return { likedBy: [], comments: [] };
+
+  const mentionNames = new Set(mentions.map((name) => String(name).trim()).filter(Boolean));
+  const mentionedRoles = mentionNames.size ? roles.filter((role) => mentionNames.has(role.name)) : [];
+  const audience = mentionedRoles.length ? mentionedRoles : roles;
+  const likedBy = audience.slice(0, 8).map((role) => role.id);
+  const commenters = (mentionedRoles.length ? mentionedRoles : audience).slice(0, mentionedRoles.length ? 4 : 2);
+  const comments = commenters.map((role, index) => ({
+    id: `comment_${Date.now().toString(36)}_${role.id}_${Math.random().toString(36).slice(2, 6)}`,
+    userName: role.name,
+    text: pickUserMomentComment(role, content),
+    replyToName: "",
+    createdAt: new Date(Date.now() + 900 + index * 700).toISOString(),
+    isRoleReply: true,
+  }));
+  return { likedBy, comments };
+}
+
 export async function createMomentForRole(roleId = getCurrentRoleId()) {
   const settings = getSettings();
   if (!settings.allowMoments) throw new Error("朋友圈生成开关已关闭");
@@ -50,6 +93,7 @@ export async function createMomentForRole(roleId = getCurrentRoleId()) {
 export function createUserMoment({ content, images = [], visibility = "public", location = "", mentions = [] }) {
   const text = content?.trim() || "";
   if (!text && !images.length) throw new Error("先写点什么，或选一张图片");
+  const interactions = buildAutoInteractionsForUserMoment({ content: text, visibility, mentions });
   return addMoment(USER_MOMENTS_ID, {
     authorType: "user",
     content: text,
@@ -57,6 +101,9 @@ export function createUserMoment({ content, images = [], visibility = "public", 
     visibility,
     location,
     mentions,
+    likedBy: interactions.likedBy,
+    likes: interactions.likedBy.length,
+    comments: interactions.comments,
   });
 }
 
