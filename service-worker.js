@@ -1,11 +1,11 @@
-const CACHE_NAME = "xiaoshouji-pwa-v39";
+const CACHE_NAME = "xiaoshouji-pwa-v40";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest?v=10",
   "./css/style.css?v=25",
-  "./css/moments-wechat-fix.css?v=2",
+  "./css/moments-wechat-fix.css?v=3",
   "./js/ai.js?v=7",
   "./js/main.js?v=32",
   "./js/memory.js",
