@@ -66,6 +66,7 @@ const state = {
   momentActionMenu: null,
   editingMomentId: null,
   momentImages: [],
+  momentMentions: [],
   momentLongPressTimer: null,
   recallRange: "auto",
   recallCustomStart: "",
@@ -228,10 +229,23 @@ function ensureRuntimeUI() {
             </label>
             <label class="setting-row moment-option">
               <span>提醒谁看</span>
-              <input id="momentMentionsInput" type="text" placeholder="输入联系人名，用逗号分隔" />
+              <button class="moment-mention-select" id="openMomentMentionsBtn" type="button">
+                <span id="momentMentionsSummary">选择联系人</span>
+              </button>
+              <input id="momentMentionsInput" type="hidden" />
             </label>
           </div>
         </form>
+      </dialog>
+      <dialog class="sheet-dialog" id="momentMentionDialog">
+        <div class="mention-sheet">
+          <header>
+            <button type="button" id="closeMomentMentionBtn">取消</button>
+            <strong>提醒谁看</strong>
+            <button type="button" id="doneMomentMentionBtn">完成</button>
+          </header>
+          <div class="mention-list" id="momentMentionList"></div>
+        </div>
       </dialog>
       <dialog class="sheet-dialog" id="momentChoiceDialog">
         <div class="menu-sheet">
@@ -297,6 +311,9 @@ function ensureRuntimeUI() {
     momentLocationInput: $("#momentLocationInput"),
     momentVisibilitySelect: $("#momentVisibilitySelect"),
     momentMentionsInput: $("#momentMentionsInput"),
+    momentMentionsSummary: $("#momentMentionsSummary"),
+    momentMentionDialog: $("#momentMentionDialog"),
+    momentMentionList: $("#momentMentionList"),
     momentChoiceDialog: $("#momentChoiceDialog"),
     shotDialog: $("#shotDialog"),
     shotPreview: $("#shotPreview"),
@@ -859,6 +876,7 @@ function renderMoments() {
               <time>${formatMomentTime(item.createdAt)}</time>
               ${item.location ? `<span>${escapeHTML(item.location)}</span>` : ""}
               ${item.visibility === "private" ? `<span>仅自己可见</span>` : ""}
+              ${item.mentions?.length ? `<span class="moment-mention">@${item.mentions.map(escapeHTML).join(" @")}</span>` : ""}
               <button class="moment-more-btn" type="button" aria-label="更多操作"></button>
             </div>
             ${
@@ -1032,15 +1050,63 @@ function renderMomentImageList() {
   });
 }
 
+function renderMomentMentionSummary() {
+  const names = Array.from(new Set(state.momentMentions.filter(Boolean)));
+  state.momentMentions = names;
+  els.momentMentionsInput.value = names.join("，");
+  els.momentMentionsSummary.textContent = names.length ? names.join("、") : "选择联系人";
+  els.momentMentionsSummary.classList.toggle("is-empty", !names.length);
+}
+
+function renderMomentMentionList() {
+  const roles = getRoles();
+  const selected = new Set(state.momentMentions);
+  if (!roles.length) {
+    els.momentMentionList.innerHTML = `<div class="empty-state">还没有联系人。</div>`;
+    return;
+  }
+  els.momentMentionList.innerHTML = roles
+    .map((role) => {
+      const name = role.name || "未命名联系人";
+      const checked = selected.has(name);
+      return `
+        <button class="mention-cell ${checked ? "selected" : ""}" type="button" data-name="${escapeHTML(name)}">
+          <img src="${role.avatar || DEFAULT_ROLE_AVATAR}" alt="${escapeHTML(name)}头像">
+          <span>${escapeHTML(name)}</span>
+          <i aria-hidden="true"></i>
+        </button>
+      `;
+    })
+    .join("");
+  $$(".mention-cell").forEach((button) => {
+    button.addEventListener("click", () => {
+      const name = button.dataset.name;
+      if (!name) return;
+      const next = new Set(state.momentMentions);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      state.momentMentions = Array.from(next);
+      renderMomentMentionList();
+      renderMomentMentionSummary();
+    });
+  });
+}
+
+function openMomentMentionPicker() {
+  renderMomentMentionList();
+  showDialog(els.momentMentionDialog);
+}
+
 function openMomentEditor(options = {}) {
   const moment = options.moment || null;
   state.editingMomentId = moment?.id || null;
   state.momentImages = [...(moment?.images || [])];
+  state.momentMentions = [...(moment?.mentions || [])];
   els.momentDialogTitle.textContent = moment ? "重新编辑" : options.textOnly ? "写想法" : "发朋友圈";
   els.momentTextInput.value = moment?.content || "";
   els.momentLocationInput.value = moment?.location || "";
   els.momentVisibilitySelect.value = moment?.visibility || "public";
-  els.momentMentionsInput.value = (moment?.mentions || []).join("，");
+  renderMomentMentionSummary();
   renderMomentImageList();
   showDialog(els.momentDialog);
   requestAnimationFrame(() => els.momentTextInput.focus());
@@ -1049,6 +1115,7 @@ function openMomentEditor(options = {}) {
 function closeMomentEditor() {
   state.editingMomentId = null;
   state.momentImages = [];
+  state.momentMentions = [];
   closeDialog(els.momentDialog);
 }
 
@@ -1059,10 +1126,7 @@ function saveMomentFromForm(event) {
     images: [...state.momentImages],
     visibility: els.momentVisibilitySelect.value,
     location: els.momentLocationInput.value.trim(),
-    mentions: els.momentMentionsInput.value
-      .split(/[，,]/)
-      .map((item) => item.trim())
-      .filter(Boolean),
+    mentions: [...state.momentMentions],
   };
   try {
     const wasEditing = Boolean(state.editingMomentId);
@@ -2833,6 +2897,9 @@ function bindEvents() {
   });
   $("#closeMomentChoiceBtn").addEventListener("click", () => closeDialog(els.momentChoiceDialog));
   $("#closeMomentDialogBtn").addEventListener("click", closeMomentEditor);
+  $("#openMomentMentionsBtn").addEventListener("click", openMomentMentionPicker);
+  $("#closeMomentMentionBtn").addEventListener("click", () => closeDialog(els.momentMentionDialog));
+  $("#doneMomentMentionBtn").addEventListener("click", () => closeDialog(els.momentMentionDialog));
   els.momentForm.addEventListener("submit", saveMomentFromForm);
   els.momentImageInput.addEventListener("change", async (event) => {
     const files = Array.from(event.target.files || []).slice(0, 9 - state.momentImages.length);

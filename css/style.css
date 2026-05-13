@@ -1287,6 +1287,7 @@ input[type="range"] {
 }
 
 .moment-sheet,
+.mention-sheet,
 .shot-sheet {
   background: #f7f7f7;
   border-radius: 18px 18px 0 0;
@@ -1295,6 +1296,7 @@ input[type="range"] {
 }
 
 .moment-sheet header,
+.mention-sheet header,
 .shot-sheet header {
   height: 52px;
   display: grid;
@@ -1306,11 +1308,13 @@ input[type="range"] {
 }
 
 .moment-sheet header strong,
+.mention-sheet header strong,
 .shot-sheet header strong {
   text-align: center;
 }
 
 .moment-sheet header button,
+.mention-sheet header button,
 .shot-sheet header button,
 .shot-sheet header a {
   border: 0;
@@ -1381,6 +1385,97 @@ input[type="range"] {
 
 .moment-option {
   padding-left: 16px;
+}
+
+.moment-mention-select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #111;
+  text-align: right;
+  font: inherit;
+}
+
+.moment-mention-select span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moment-mention-select span::after {
+  content: "›";
+  margin-left: 8px;
+  color: #b8b8b8;
+  font-size: 20px;
+  vertical-align: -1px;
+}
+
+.moment-mention-select .is-empty {
+  color: #999;
+}
+
+.mention-list {
+  background: #fff;
+}
+
+.mention-cell {
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  display: grid;
+  grid-template-columns: 40px 1fr 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  text-align: left;
+}
+
+.mention-cell:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.mention-cell img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #ddd;
+}
+
+.mention-cell span {
+  min-width: 0;
+  overflow: hidden;
+  color: #111;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-cell i {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #cfcfcf;
+  border-radius: 50%;
+}
+
+.mention-cell.selected i {
+  border-color: var(--wechat-green);
+  background: var(--wechat-green);
+}
+
+.mention-cell.selected i::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 5px;
+  margin: 5px auto 0;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg);
 }
 
 .shot-preview-wrap {
