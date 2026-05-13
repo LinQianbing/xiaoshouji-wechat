@@ -11,7 +11,7 @@ import {
   setMoments,
   updateMoment,
 } from "./storage.js?v=4";
-import { generateMoment } from "./ai.js?v=8";
+import { generateMoment } from "./ai.js?v=9";
 
 export const USER_MOMENTS_ID = "__user__";
 

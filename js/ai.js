@@ -1,6 +1,7 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=6";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=7";
 
 const REQUEST_TIMEOUT_MS = 60000;
+const CACHE_STATS_KEY = "xiaoshouji.cacheStats.v1";
 
 export class ApiNotConfiguredError extends Error {
   constructor(message = "还没有连接 API，请先到“我 → AI 设置”填写 API Key，并拉取模型。") {
@@ -33,6 +34,42 @@ function chatEndpoint(apiBase) {
 
 function modelsEndpoint(apiBase) {
   return chatEndpoint(apiBase).replace(/\/chat\/completions$/, "/models");
+}
+
+function readCacheStats() {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_STATS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function recordCacheUsage(settings, usage = {}) {
+  const hit = Number(usage.prompt_cache_hit_tokens || 0);
+  const miss = Number(usage.prompt_cache_miss_tokens || 0);
+  const prompt = Number(usage.prompt_tokens || hit + miss || 0);
+  if (!hit && !miss && !prompt) return;
+  const key = `${settings.model || "unknown"} @ ${chatEndpoint(settings.apiBase)}`;
+  const stats = readCacheStats();
+  const item = stats[key] || {
+    model: settings.model || "unknown",
+    endpoint: chatEndpoint(settings.apiBase),
+    requests: 0,
+    promptTokens: 0,
+    promptCacheHitTokens: 0,
+    promptCacheMissTokens: 0,
+    lastHitRate: 0,
+    updatedAt: "",
+  };
+  item.requests += 1;
+  item.promptTokens += prompt;
+  item.promptCacheHitTokens += hit;
+  item.promptCacheMissTokens += miss;
+  const total = item.promptCacheHitTokens + item.promptCacheMissTokens;
+  item.lastHitRate = total ? item.promptCacheHitTokens / total : 0;
+  item.updatedAt = new Date().toISOString();
+  stats[key] = item;
+  localStorage.setItem(CACHE_STATS_KEY, JSON.stringify(stats));
 }
 
 async function fetchWithReadableError(url, options) {
@@ -73,6 +110,7 @@ async function callChatCompletions(settings, messages, temperature = 0.85) {
   }
 
   const data = await res.json();
+  recordCacheUsage(settings, data.usage);
   return data.choices?.[0]?.message?.content || "";
 }
 
