@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=7";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=8";
 
 const REQUEST_TIMEOUT_MS = 60000;
 const CACHE_STATS_KEY = "xiaoshouji.cacheStats.v1";
@@ -123,6 +123,22 @@ function chatMessageLimit(talkLevel = 5) {
   return 5;
 }
 
+function chatTemperature(talkLevel = 5) {
+  const level = Number(talkLevel) || 5;
+  if (level <= 4) return 0.85;
+  if (level <= 7) return 0.9;
+  return 0.95;
+}
+
+function cleanPatEcho(message = "") {
+  return String(message)
+    .replace(/^(你|我|用户|对方)?刚刚?拍了拍(你|我|对方|TA|他|她)?[。！!，,\s]*/g, "")
+    .replace(/^(你|用户|对方)拍了拍(我|你|对方|TA|他|她)[。！!，,\s]*/g, "")
+    .replace(/^我被(你|用户|对方)拍了拍[。！!，,\s]*/g, "")
+    .replace(/^(拍一拍|这是拍一拍动作)[。！!，,\s]*/g, "")
+    .trim();
+}
+
 export async function fetchAvailableModels(settings) {
   if (!settings.apiKey?.trim()) throw new ApiNotConfiguredError("还没有填写 API Key，请先到“我 → AI 设置”填写。");
   const res = await fetchWithReadableError(modelsEndpoint(settings.apiBase), {
@@ -153,11 +169,16 @@ export async function generateChatReply(payload) {
   if (!isApiReady(settings)) throw new ApiNotConfiguredError();
 
   const prompt = buildChatPrompt(payload);
-  const raw = await callChatCompletions(settings, prompt, 1.15);
+  const raw = await callChatCompletions(settings, prompt, chatTemperature(settings.talkLevel));
   const parsed = extractJSON(raw);
   const limit = chatMessageLimit(settings.talkLevel);
+  const messages = Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages : [parsed.message || "嗯嗯，我在。"];
+  const cleanedMessages = messages
+    .map(String)
+    .map((item) => (payload.userEventType === "pat" ? cleanPatEcho(item) : item.trim()))
+    .filter((item) => item.trim());
   return {
-    messages: Array.isArray(parsed.messages) && parsed.messages.length ? parsed.messages.map(String).filter((item) => item.trim()).slice(0, limit) : [String(parsed.message || "嗯嗯，我在。")],
+    messages: (cleanedMessages.length ? cleanedMessages : ["嗯嗯，我在。"]).slice(0, limit),
     mood: parsed.mood || "normal",
     shouldPat: Boolean(parsed.shouldPat),
     shouldRemember: Boolean(parsed.shouldRemember),

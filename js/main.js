@@ -30,8 +30,8 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=9";
-import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=10";
+import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js?v=1";
 import {
   USER_MOMENTS_ID,
   commentMoment,
@@ -1454,9 +1454,14 @@ function extractRecallKeywords(text = "") {
 }
 
 function shouldRecallChatHistory(text = "") {
-  return /之前|以前|上次|刚才|记得|记不记得|说过|聊过|提过|哪天|什么时候|几点|翻旧账|查(一下|下)?|找(一下|下)?|关键词|聊天记录|历史记录/.test(
-    text,
-  );
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  if (/聊天记录|历史记录|旧聊天|翻旧账|关键词/.test(raw)) return true;
+  if (/(翻|查|找)(一下|下)?[^，。？！?]{0,18}(记录|旧账|之前|以前|上次|说过|聊过|提过)/.test(raw)) return true;
+  if (/(记不记得|还记得|记得[^，。？！?]{0,24}[吗嘛么？?])/.test(raw)) return true;
+  if (/(之前|以前|上次|刚才|前面|那天|哪天|什么时候|几点)[^，。？！?]{0,24}(说|聊|提|讲|发|问|发生|那次|内容|记录|吗|嘛|么|？|\?)/.test(raw)) return true;
+  if (/(说过|聊过|提过|讲过|问过)[^，。？！?]{0,24}(吗|嘛|么|什么|哪|什么时候|几点|记录|？|\?)/.test(raw)) return true;
+  return false;
 }
 
 function searchChatHistory(roleId, userText, options = {}) {
@@ -1471,6 +1476,7 @@ function searchChatHistory(roleId, userText, options = {}) {
   const hits = [];
   for (const message of messages) {
     if (!message.content || message.isRevoked || excludedIds.has(message.id)) continue;
+    if ((message.type || "text") !== "text" || message.sender === "system") continue;
     const createdMs = new Date(message.createdAt).getTime();
     if (startMs && createdMs < startMs) continue;
     if (endMs && createdMs > endMs) continue;
@@ -1784,7 +1790,8 @@ function createPatMessage(actor = "user") {
       mode: getCurrentMode(),
       roleId,
       recentMessages: getChats(roleId).slice(-18),
-      userText: `我刚刚拍了拍你${normalizePatSuffix(role.patSuffix)}。这是拍一拍动作，可以自然回应。`,
+      userText: "[动作事件] 用户刚刚拍了拍你。只对这个动作做自然回应，不要复述拍一拍文案。",
+      userEventType: "pat",
     });
   }
 }
@@ -2321,6 +2328,7 @@ async function appendModelReply({
   recallTriggered = false,
   recallStatus = null,
   proactive = false,
+  userEventType = "text",
 }) {
   if (recallTriggered || recalledMessages.length) {
     recallStatus ||= appendRecallStatus(recalledRange);
@@ -2339,6 +2347,7 @@ async function appendModelReply({
       recalledMessages,
       recalledRange,
       userText,
+      userEventType,
     });
     recallStatus?.remove();
     typing.remove();
@@ -2413,8 +2422,8 @@ async function sendMessage() {
   const sentMessage = addChat(roleId, { sender: "user", content: text, mode, quoteToMessageId });
   const recentMessages = recentMessagesForReply(roleId, quoteToMessageId);
   const recallTriggered = shouldRecallChatHistory(text);
-  const recalledRange = resolveRecallRange(text);
-  const recalledMessages = searchChatHistory(roleId, text, { excludeIds: [sentMessage.id], range: recalledRange });
+  const recalledRange = recallTriggered ? resolveRecallRange(text) : null;
+  const recalledMessages = recallTriggered ? searchChatHistory(roleId, text, { excludeIds: [sentMessage.id], range: recalledRange }) : [];
   renderMessages();
   renderChatList();
   const recallStatus = recallTriggered ? appendRecallStatus(recalledRange) : null;
@@ -2458,8 +2467,8 @@ async function sendLocalAttachment(file, type) {
   });
   const recentMessages = recentMessagesForReply(roleId, quoteToMessageId);
   const recallTriggered = shouldRecallChatHistory(content);
-  const recalledRange = resolveRecallRange(content);
-  const recalledMessages = searchChatHistory(roleId, content, { excludeIds: [sentMessage.id], range: recalledRange });
+  const recalledRange = recallTriggered ? resolveRecallRange(content) : null;
+  const recalledMessages = recallTriggered ? searchChatHistory(roleId, content, { excludeIds: [sentMessage.id], range: recalledRange }) : [];
   renderMessages();
   renderChatList();
   const recallStatus = recallTriggered ? appendRecallStatus(recalledRange) : null;

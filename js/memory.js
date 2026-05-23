@@ -3,6 +3,7 @@ import { summarizeMemories } from "./ai.js";
 import { nowISO } from "./time.js";
 
 const MEMORY_LIMIT = 60;
+const MEMORY_RELEVANCE_THRESHOLD = 0.16;
 
 const CATEGORY_RULES = [
   { category: "preference", label: "偏好", pattern: /喜欢|讨厌|爱吃|不吃|想要|偏好|最爱|雷点|接受不了/ },
@@ -156,20 +157,28 @@ export function rememberText(roleId, content, importance = 3, emotionWeight = 3,
 }
 
 export function selectRelevantMemories(memories = [], query = "", recentMessages = []) {
-  const queryKeywords = extractKeywords(
-    [query, ...recentMessages.slice(-6).map((message) => message.content || "")].join(" "),
-  );
+  const queryContext = [
+    query,
+    ...recentMessages
+      .slice(-6)
+      .filter((message) => (message.type || "text") === "text" && !message.isRevoked)
+      .map((message) => message.content || ""),
+  ].join(" ");
+  const queryKeywords = extractKeywords(queryContext);
   return memories
     .map(normalizeMemory)
     .map((memory) => {
       const relevance = keywordScore(memory.keywords, queryKeywords);
+      const semanticRelevance = charGramScore(memory.content, queryContext);
+      const finalRelevance = Math.max(relevance, semanticRelevance);
       const score =
-        relevance * 8 +
+        finalRelevance * 8 +
         Number(memory.importance || 3) * 1.2 +
         Number(memory.emotionWeight || 3) * 0.7 +
         Number(memory.confidence || 0.7);
-      return { ...memory, relevance, score };
+      return { ...memory, relevance: finalRelevance, score };
     })
+    .filter((memory) => memory.relevance >= MEMORY_RELEVANCE_THRESHOLD)
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
 }
