@@ -30,8 +30,8 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=11";
-import { memoryCategoryLabel, rememberText, selectContextMemories, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=2";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=12";
+import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=3";
 import {
   USER_MOMENTS_ID,
   commentMoment,
@@ -1181,7 +1181,7 @@ async function generateUserMomentReactions(moment) {
       const memoryText = reaction.memoryCandidate || `用户发过一条朋友圈：${moment.content || "（无文字）"}`;
       if (settings.allowMemory) {
         rememberText(role.id, memoryText, 4, 4, { source: "moment", kind: "episode", confidence: 0.76, rawRefs: [moment.id] });
-        if (reaction.feelingMemoryCandidate) {
+        if (shouldSaveFeelingMemory(reaction.feelingMemoryCandidate, moment.content || reaction.message || reaction.comment)) {
           rememberText(role.id, reaction.feelingMemoryCandidate, 4, 4, {
             source: "role_feel",
             kind: "inner_feel",
@@ -2404,7 +2404,7 @@ async function appendModelReply({
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       rememberText(roleId, reply.memoryCandidate, 4, 4, { source: "chat", confidence: 0.72 });
     }
-    if (settings.allowMemory && reply.feelingMemoryCandidate) {
+    if (settings.allowMemory && shouldSaveFeelingMemory(reply.feelingMemoryCandidate, userText)) {
       rememberText(roleId, reply.feelingMemoryCandidate, 4, 4, {
         source: "role_feel",
         kind: "inner_feel",

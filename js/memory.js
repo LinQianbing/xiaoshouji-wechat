@@ -65,6 +65,33 @@ function inferUnresolved(content = "", category = "other") {
   return /还没|没有解决|没说完|后来|等|下次|记得|提醒|答应|承诺|担心|别忘|悬着|放不下|吵架|冷落|委屈|焦虑|压力|考试|面试/.test(content);
 }
 
+export function shouldSaveFeelingMemory(content = "", triggerText = "") {
+  const text = String(content || "").trim();
+  if (text.length < 8 || text.length > 140) return false;
+
+  const normalized = normalizeText(text);
+  const trigger = normalizeText(triggerText);
+  const emotionPattern = /担心|安心|放心|在意|别扭|委屈|心疼|失落|难过|尴尬|不舒服|生气|着急|紧张|放松|开心|靠近|疏远|冷落|松了一口气/;
+  if (!emotionPattern.test(text)) return false;
+
+  const vaguePattern = /更了解用户|更加了解|关系更近|关系变好|有点感觉|复杂的感觉|说不清|小情绪|心里波动|被触动|产生了感受|留下了印象/;
+  if (vaguePattern.test(text)) return false;
+
+  const overDramaPattern = /暗恋|爱上|离不开|占有欲|独占欲|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/;
+  if (overDramaPattern.test(text)) return false;
+
+  const hasAnchor = ["因为", "看到", "听到", "用户", "对方", "这次", "刚才", "朋友圈", "提到", "说"].some((item) => text.includes(item));
+  if (!hasAnchor) return false;
+
+  const contentKeywords = extractKeywords(text);
+  const triggerKeywords = extractKeywords(trigger);
+  const overlap = keywordScore(contentKeywords, triggerKeywords);
+  const relatedToTrigger = normalized.includes(trigger) || overlap >= 0.15 || charGramScore(text, trigger) >= 0.12;
+  if (trigger && !relatedToTrigger) return false;
+
+  return Boolean(normalized);
+}
+
 function extractKeywords(content = "") {
   const normalized = normalizeText(content);
   const stopwords = new Set(["用户", "自己", "这个", "那个", "事情", "以后", "已经", "还有", "没有", "但是", "因为", "所以"]);
@@ -268,8 +295,9 @@ export function selectSurfacingMemories(memories = [], query = "", recentMessage
       .map((message) => message.content || ""),
   ].join(" ");
   const queryKeywords = extractKeywords(queryContext);
+  const hasQuerySignal = Boolean(queryKeywords.length || normalizeText(queryContext).length >= 4);
   const now = Date.now();
-  return memories
+  const candidates = memories
     .map(withLifecycle)
     .filter((memory) => !memory.archived)
     .filter((memory) => memory.unresolved || memory.kind === "inner_feel" || Number(memory.arousal || 0) >= 0.65)
@@ -278,17 +306,34 @@ export function selectSurfacingMemories(memories = [], query = "", recentMessage
       const lastActivated = memory.lastActivatedAt ? new Date(memory.lastActivatedAt).getTime() : 0;
       const quietDays = lastActivated ? Math.max(0, (now - lastActivated) / (1000 * 60 * 60 * 24)) : 30;
       const freshnessPenalty = quietDays < 1 ? 1.5 : quietDays < 3 ? 0.8 : 0;
+      const canSurfaceUnresolved =
+        !memory.unresolved ||
+        (hasQuerySignal && relevance >= 0.12) ||
+        (quietDays >= 10 && Number(memory.arousal || 0) >= 0.72 && relevance >= 0.06);
       const score =
-        (memory.unresolved ? 4.8 : 0) +
+        (memory.unresolved ? 2.2 : 0) +
         Number(memory.arousal || 0) * 3 +
         Number(memory.importance || 3) +
-        relevance * 4 -
+        relevance * 5 -
         freshnessPenalty;
       const surfacingReason = memory.unresolved ? "这件事还悬着" : memory.kind === "inner_feel" ? "TA心里还有一点感觉" : "这段旧事有情绪余温";
-      return { ...memory, relevance, score, surfacingReason };
+      return { ...memory, relevance, score, surfacingReason, canSurfaceUnresolved };
     })
+    .filter((memory) => memory.canSurfaceUnresolved)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 2);
+    .slice(0, 6);
+
+  const picked = [];
+  let unresolvedCount = 0;
+  for (const memory of candidates) {
+    if (memory.unresolved) {
+      if (unresolvedCount >= 1) continue;
+      unresolvedCount += 1;
+    }
+    picked.push(memory);
+    if (picked.length >= 2) break;
+  }
+  return picked.map(({ canSurfaceUnresolved, ...memory }) => memory);
 }
 
 export function selectContextMemories(memories = [], query = "", recentMessages = []) {

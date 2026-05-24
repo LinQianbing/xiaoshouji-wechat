@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=9";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=10";
 
 const REQUEST_TIMEOUT_MS = 60000;
 const CACHE_STATS_KEY = "xiaoshouji.cacheStats.v1";
