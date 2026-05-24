@@ -30,8 +30,8 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=12";
-import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=3";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=13";
+import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=4";
 import {
   USER_MOMENTS_ID,
   commentMoment,
@@ -1181,7 +1181,7 @@ async function generateUserMomentReactions(moment) {
       const memoryText = reaction.memoryCandidate || `用户发过一条朋友圈：${moment.content || "（无文字）"}`;
       if (settings.allowMemory) {
         rememberText(role.id, memoryText, 4, 4, { source: "moment", kind: "episode", confidence: 0.76, rawRefs: [moment.id] });
-        if (shouldSaveFeelingMemory(reaction.feelingMemoryCandidate, moment.content || reaction.message || reaction.comment)) {
+        if (shouldSaveFeelingMemory(reaction.feelingMemoryCandidate, moment.content || reaction.message || reaction.comment, { roleText: role.description })) {
           rememberText(role.id, reaction.feelingMemoryCandidate, 4, 4, {
             source: "role_feel",
             kind: "inner_feel",
@@ -2404,7 +2404,7 @@ async function appendModelReply({
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       rememberText(roleId, reply.memoryCandidate, 4, 4, { source: "chat", confidence: 0.72 });
     }
-    if (settings.allowMemory && shouldSaveFeelingMemory(reply.feelingMemoryCandidate, userText)) {
+    if (settings.allowMemory && shouldSaveFeelingMemory(reply.feelingMemoryCandidate, userText, { roleText: role.description })) {
       rememberText(roleId, reply.feelingMemoryCandidate, 4, 4, {
         source: "role_feel",
         kind: "inner_feel",

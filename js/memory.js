@@ -65,19 +65,23 @@ function inferUnresolved(content = "", category = "other") {
   return /还没|没有解决|没说完|后来|等|下次|记得|提醒|答应|承诺|担心|别忘|悬着|放不下|吵架|冷落|委屈|焦虑|压力|考试|面试/.test(content);
 }
 
-export function shouldSaveFeelingMemory(content = "", triggerText = "") {
+export function shouldSaveFeelingMemory(content = "", triggerText = "", options = {}) {
   const text = String(content || "").trim();
   if (text.length < 8 || text.length > 140) return false;
 
   const normalized = normalizeText(text);
   const trigger = normalizeText(triggerText);
+  const roleText = String(options.roleText || "");
+  const explicitCrushSetting = /暗恋|喜欢用户|喜欢你|喜欢我|恋人|对象/.test(roleText);
   const emotionPattern = /担心|安心|放心|在意|别扭|委屈|心疼|失落|难过|尴尬|不舒服|生气|着急|紧张|放松|开心|靠近|疏远|冷落|松了一口气/;
   if (!emotionPattern.test(text)) return false;
 
   const vaguePattern = /更了解用户|更加了解|关系更近|关系变好|有点感觉|复杂的感觉|说不清|小情绪|心里波动|被触动|产生了感受|留下了印象/;
   if (vaguePattern.test(text)) return false;
 
-  const overDramaPattern = /暗恋|爱上|离不开|占有欲|独占欲|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/;
+  const overDramaPattern = explicitCrushSetting
+    ? /爱上|离不开|占有欲|独占欲|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/
+    : /暗恋|爱上|离不开|占有欲|独占欲|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/;
   if (overDramaPattern.test(text)) return false;
 
   const hasAnchor = ["因为", "看到", "听到", "用户", "对方", "这次", "刚才", "朋友圈", "提到", "说"].some((item) => text.includes(item));
