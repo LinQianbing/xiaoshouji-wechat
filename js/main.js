@@ -30,8 +30,8 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=14";
-import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=5";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=15";
+import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=6";
 import {
   USER_MOMENTS_ID,
   commentMoment,

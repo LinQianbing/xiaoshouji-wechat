@@ -73,17 +73,15 @@ export function shouldSaveFeelingMemory(content = "", triggerText = "", options 
   const trigger = normalizeText(triggerText);
   const roleText = String(options.roleText || "");
   const romanceContext = `${roleText} ${triggerText}`;
-  const explicitRomanceContext = /暗恋|喜欢用户|喜欢你|喜欢我|恋人|对象|男朋友|女朋友|在一起|暧昧|吃醋|占有欲|独占欲/.test(romanceContext);
-  const emotionPattern = /担心|安心|放心|在意|别扭|委屈|心疼|失落|难过|尴尬|不舒服|生气|着急|紧张|放松|开心|靠近|疏远|冷落|松了一口气|吃醋|占有欲/;
+  const explicitRomanceContext = /暗恋|喜欢用户|喜欢你|喜欢我|恋人|对象|男朋友|女朋友|在一起|暧昧|吃醋|嫉妒|占有欲|独占欲|离不开|病娇|偏执|强势/.test(romanceContext);
+  const emotionPattern = /担心|安心|放心|在意|别扭|委屈|心疼|失落|难过|尴尬|不舒服|生气|着急|紧张|放松|开心|靠近|疏远|冷落|松了一口气|吃醋|嫉妒|占有欲|独占欲|离不开/;
   if (!emotionPattern.test(text)) return false;
 
   const vaguePattern = /更了解用户|更加了解|关系更近|关系变好|有点感觉|复杂的感觉|说不清|小情绪|心里波动|被触动|产生了感受|留下了印象/;
   if (vaguePattern.test(text)) return false;
 
-  const overDramaPattern = explicitRomanceContext
-    ? /爱上|离不开|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/
-    : /暗恋|爱上|离不开|占有欲|独占欲|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/;
-  if (overDramaPattern.test(text)) return false;
+  const unsupportedRomancePattern = /暗恋|爱上|离不开|占有欲|独占欲|嫉妒|无法自拔|命中注定|灵魂伴侣|深深爱|强烈嫉妒|必须拥有/;
+  if (!explicitRomanceContext && unsupportedRomancePattern.test(text)) return false;
 
   const hasAnchor = ["因为", "看到", "听到", "用户", "对方", "这次", "刚才", "朋友圈", "提到", "说"].some((item) => text.includes(item));
   if (!hasAnchor) return false;
