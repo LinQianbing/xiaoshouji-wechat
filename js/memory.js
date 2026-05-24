@@ -4,6 +4,8 @@ import { nowISO } from "./time.js";
 
 const MEMORY_LIMIT = 60;
 const MEMORY_RELEVANCE_THRESHOLD = 0.16;
+const ARCHIVE_AFTER_DAYS = 21;
+const ARCHIVE_SCORE_THRESHOLD = 6.2;
 
 const CATEGORY_RULES = [
   { category: "preference", label: "偏好", pattern: /喜欢|讨厌|爱吃|不吃|想要|偏好|最爱|雷点|接受不了/ },
@@ -30,6 +32,37 @@ function normalizeText(value = "") {
 
 function inferCategory(content = "") {
   return CATEGORY_RULES.find((item) => item.pattern.test(content))?.category || "other";
+}
+
+function clamp(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
+}
+
+function inferKind(content = "", category = "other", source = "auto") {
+  if (source === "role_feel") return "inner_feel";
+  if (["profile", "preference", "boundary", "habit"].includes(category)) return "identity";
+  if (category === "relationship") return /感觉|在意|别扭|委屈|冷落|靠近|疏远|吃醋|想念/.test(content) ? "relationship_state" : "identity";
+  return "episode";
+}
+
+function inferValence(content = "") {
+  if (/开心|喜欢|舒服|安心|期待|高兴|好点|和好|甜|满足|放心/.test(content)) return 0.55;
+  if (/难过|焦虑|生气|委屈|累|压力|害怕|孤独|想哭|吵架|崩|烦|冷落|失望|不舒服/.test(content)) return -0.65;
+  return 0;
+}
+
+function inferArousal(content = "", emotionWeight = 3) {
+  const base = clamp(Number(emotionWeight || 3) / 5, 0, 1);
+  if (/崩|哭|吵架|分手|害怕|生气|焦虑|压力|失眠|委屈|很难受|受不了|冷落/.test(content)) return Math.max(base, 0.75);
+  if (/开心|期待|紧张|重要|生日|考试|面试|约好|承诺/.test(content)) return Math.max(base, 0.58);
+  return base;
+}
+
+function inferUnresolved(content = "", category = "other") {
+  if (category === "promise") return true;
+  return /还没|没有解决|没说完|后来|等|下次|记得|提醒|答应|承诺|担心|别忘|悬着|放不下|吵架|冷落|委屈|焦虑|压力|考试|面试/.test(content);
 }
 
 function extractKeywords(content = "") {
@@ -74,14 +107,26 @@ function normalizeMemory(memory) {
   const content = String(memory.content || "").trim().slice(0, 140);
   const category = memory.category || inferCategory(content);
   const keywords = memory.keywords?.length ? memory.keywords.slice(0, 8) : extractKeywords(content);
+  const emotionWeight = Math.min(5, Math.max(1, Number(memory.emotionWeight ?? 3)));
+  const kind = memory.kind || inferKind(content, category, memory.source);
+  const unresolved = memory.resolvedAt ? false : Boolean(memory.unresolved ?? inferUnresolved(content, category));
   return {
     ...memory,
     content,
     category,
+    kind,
     keywords,
     confidence: Number(memory.confidence ?? 0.7),
     importance: Math.min(5, Math.max(1, Number(memory.importance ?? 3))),
-    emotionWeight: Math.min(5, Math.max(1, Number(memory.emotionWeight ?? 3))),
+    emotionWeight,
+    valence: clamp(memory.valence ?? inferValence(content), -1, 1),
+    arousal: clamp(memory.arousal ?? inferArousal(content, emotionWeight), 0, 1),
+    unresolved,
+    resolvedAt: memory.resolvedAt || "",
+    archived: Boolean(memory.archived),
+    activationCount: Number(memory.activationCount ?? 0),
+    lastActivatedAt: memory.lastActivatedAt || "",
+    rawRefs: Array.isArray(memory.rawRefs) ? memory.rawRefs.slice(0, 8) : [],
   };
 }
 
@@ -96,10 +141,25 @@ function mergeContent(oldContent, newContent) {
 function rankForRetention(memory) {
   const importance = Number(memory.importance || 3);
   const emotion = Number(memory.emotionWeight || 3);
+  const arousal = Number(memory.arousal || 0);
   const confidence = Number(memory.confidence || 0.7);
+  const activation = Number(memory.activationCount || 0);
   const age = Date.now() - new Date(memory.updatedAt || memory.createdAt || Date.now()).getTime();
-  const agePenalty = Math.min(2, age / (1000 * 60 * 60 * 24 * 90));
-  return importance * 2 + emotion + confidence * 2 - agePenalty;
+  const ageDays = Math.max(0, age / (1000 * 60 * 60 * 24));
+  const agePenalty = Math.min(4, ageDays / (memory.unresolved ? 110 : 55));
+  return importance * 1.8 + emotion + arousal * 2 + confidence * 2 + Math.pow(activation + 1, 0.35) - agePenalty;
+}
+
+function withLifecycle(memory) {
+  const normalized = normalizeMemory(memory);
+  const age = Date.now() - new Date(normalized.updatedAt || normalized.createdAt || Date.now()).getTime();
+  const ageDays = Math.max(0, age / (1000 * 60 * 60 * 24));
+  const shouldArchive =
+    normalized.source !== "manual" &&
+    !normalized.unresolved &&
+    ageDays >= ARCHIVE_AFTER_DAYS &&
+    rankForRetention(normalized) < ARCHIVE_SCORE_THRESHOLD;
+  return { ...normalized, archived: normalized.archived || shouldArchive };
 }
 
 export function rememberText(roleId, content, importance = 3, emotionWeight = 3, options = {}) {
@@ -108,6 +168,12 @@ export function rememberText(roleId, content, importance = 3, emotionWeight = 3,
     importance,
     emotionWeight,
     category: options.category,
+    kind: options.kind,
+    valence: options.valence,
+    arousal: options.arousal,
+    unresolved: options.unresolved,
+    resolvedAt: options.resolvedAt,
+    rawRefs: options.rawRefs,
     confidence: options.confidence,
     source: options.source || "auto",
   });
@@ -136,11 +202,18 @@ export function rememberText(roleId, content, importance = 3, emotionWeight = 3,
       keywords: [...new Set([...(existing.keywords || []), ...candidate.keywords])].slice(0, 8),
       importance: Math.max(existing.importance || 3, candidate.importance || 3),
       emotionWeight: Math.max(existing.emotionWeight || 3, candidate.emotionWeight || 3),
+      valence: Math.abs(candidate.valence || 0) >= Math.abs(existing.valence || 0) ? candidate.valence : existing.valence,
+      arousal: Math.max(existing.arousal || 0, candidate.arousal || 0),
+      unresolved: Boolean(existing.unresolved || candidate.unresolved) && !candidate.resolvedAt,
+      resolvedAt: candidate.resolvedAt || existing.resolvedAt || "",
+      rawRefs: [...new Set([...(existing.rawRefs || []), ...(candidate.rawRefs || [])])].slice(0, 8),
+      archived: false,
       confidence: Math.max(existing.confidence || 0.7, candidate.confidence || 0.7),
       source: existing.source === "manual" ? "manual" : candidate.source,
       updatedAt: nowISO(),
     });
     const next = [merged, ...memories.filter((_, index) => index !== existingIndex)]
+      .map(withLifecycle)
       .sort((a, b) => rankForRetention(b) - rankForRetention(a))
       .slice(0, MEMORY_LIMIT);
     setMemories(roleId, next);
@@ -149,7 +222,7 @@ export function rememberText(roleId, content, importance = 3, emotionWeight = 3,
 
   const added = addMemory(roleId, candidate);
   const next = getMemories(roleId)
-    .map(normalizeMemory)
+    .map(withLifecycle)
     .sort((a, b) => rankForRetention(b) - rankForRetention(a))
     .slice(0, MEMORY_LIMIT);
   setMemories(roleId, next);
@@ -166,7 +239,7 @@ export function selectRelevantMemories(memories = [], query = "", recentMessages
   ].join(" ");
   const queryKeywords = extractKeywords(queryContext);
   return memories
-    .map(normalizeMemory)
+    .map(withLifecycle)
     .map((memory) => {
       const relevance = keywordScore(memory.keywords, queryKeywords);
       const semanticRelevance = charGramScore(memory.content, queryContext);
@@ -175,12 +248,72 @@ export function selectRelevantMemories(memories = [], query = "", recentMessages
         finalRelevance * 8 +
         Number(memory.importance || 3) * 1.2 +
         Number(memory.emotionWeight || 3) * 0.7 +
+        Number(memory.arousal || 0) * 1.6 +
+        (memory.unresolved ? 1.4 : 0) +
         Number(memory.confidence || 0.7);
       return { ...memory, relevance: finalRelevance, score };
     })
+    .filter((memory) => !memory.archived || memory.unresolved || memory.relevance >= 0.42)
     .filter((memory) => memory.relevance >= MEMORY_RELEVANCE_THRESHOLD)
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
+}
+
+export function selectSurfacingMemories(memories = [], query = "", recentMessages = []) {
+  const queryContext = [
+    query,
+    ...recentMessages
+      .slice(-6)
+      .filter((message) => (message.type || "text") === "text" && !message.isRevoked)
+      .map((message) => message.content || ""),
+  ].join(" ");
+  const queryKeywords = extractKeywords(queryContext);
+  const now = Date.now();
+  return memories
+    .map(withLifecycle)
+    .filter((memory) => !memory.archived)
+    .filter((memory) => memory.unresolved || memory.kind === "inner_feel" || Number(memory.arousal || 0) >= 0.65)
+    .map((memory) => {
+      const relevance = Math.max(keywordScore(memory.keywords, queryKeywords), charGramScore(memory.content, queryContext));
+      const lastActivated = memory.lastActivatedAt ? new Date(memory.lastActivatedAt).getTime() : 0;
+      const quietDays = lastActivated ? Math.max(0, (now - lastActivated) / (1000 * 60 * 60 * 24)) : 30;
+      const freshnessPenalty = quietDays < 1 ? 1.5 : quietDays < 3 ? 0.8 : 0;
+      const score =
+        (memory.unresolved ? 4.8 : 0) +
+        Number(memory.arousal || 0) * 3 +
+        Number(memory.importance || 3) +
+        relevance * 4 -
+        freshnessPenalty;
+      const surfacingReason = memory.unresolved ? "这件事还悬着" : memory.kind === "inner_feel" ? "TA心里还有一点感觉" : "这段旧事有情绪余温";
+      return { ...memory, relevance, score, surfacingReason };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2);
+}
+
+export function selectContextMemories(memories = [], query = "", recentMessages = []) {
+  const selected = [...selectSurfacingMemories(memories, query, recentMessages), ...selectRelevantMemories(memories, query, recentMessages)];
+  const byId = new Map();
+  for (const memory of selected) {
+    if (!memory?.id || byId.has(memory.id)) continue;
+    byId.set(memory.id, memory);
+  }
+  return [...byId.values()].slice(0, 10);
+}
+
+export function touchMemories(roleId, memoryIds = []) {
+  const ids = new Set(memoryIds.filter(Boolean));
+  if (!ids.size) return;
+  const next = getMemories(roleId).map((memory) =>
+    ids.has(memory.id)
+      ? {
+          ...memory,
+          activationCount: Number(memory.activationCount || 0) + 1,
+          lastActivatedAt: nowISO(),
+        }
+      : memory,
+  );
+  setMemories(roleId, next.map(withLifecycle).sort((a, b) => rankForRetention(b) - rankForRetention(a)).slice(0, MEMORY_LIMIT));
 }
 
 export async function summarizeRecentChatToMemory(roleId = getCurrentRoleId()) {
@@ -195,6 +328,10 @@ export async function summarizeRecentChatToMemory(roleId = getCurrentRoleId()) {
     .map((item) =>
       rememberText(roleId, item.content, Number(item.importance ?? 3), Number(item.emotionWeight ?? 3), {
         category: item.category,
+        kind: item.kind,
+        valence: item.valence,
+        arousal: item.arousal,
+        unresolved: item.unresolved,
         confidence: item.confidence,
         source: "summary",
       }),

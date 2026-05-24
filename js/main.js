@@ -30,8 +30,8 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=10";
-import { memoryCategoryLabel, rememberText, selectRelevantMemories, summarizeRecentChatToMemory } from "./memory.js?v=1";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=11";
+import { memoryCategoryLabel, rememberText, selectContextMemories, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=2";
 import {
   USER_MOMENTS_ID,
   commentMoment,
@@ -1145,14 +1145,16 @@ async function generateUserMomentReactions(moment) {
     const role = getRole(roleId);
     if (!role || role.id !== roleId || role.isBlocked) continue;
     try {
+      const contextMemories = selectContextMemories(getMemories(role.id), moment.content, getChats(role.id).slice(-18));
       const reaction = await generateMomentReaction({
         role,
         settings,
         moment,
         mentioned: mentioned.has(role.name),
-        memories: selectRelevantMemories(getMemories(role.id), moment.content, getChats(role.id).slice(-18)),
+        memories: contextMemories,
         recentMessages: getChats(role.id).slice(-18),
       });
+      touchMemories(role.id, contextMemories.map((memory) => memory.id));
       if (reaction.comment) {
         comments.push({
           id: `comment_${Date.now().toString(36)}_${role.id}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1178,7 +1180,16 @@ async function generateUserMomentReactions(moment) {
       }
       const memoryText = reaction.memoryCandidate || `用户发过一条朋友圈：${moment.content || "（无文字）"}`;
       if (settings.allowMemory) {
-        rememberText(role.id, memoryText, 4, 4, { source: "moment", confidence: 0.76 });
+        rememberText(role.id, memoryText, 4, 4, { source: "moment", kind: "episode", confidence: 0.76, rawRefs: [moment.id] });
+        if (reaction.feelingMemoryCandidate) {
+          rememberText(role.id, reaction.feelingMemoryCandidate, 4, 4, {
+            source: "role_feel",
+            kind: "inner_feel",
+            category: "relationship",
+            confidence: 0.72,
+            rawRefs: [moment.id],
+          });
+        }
       }
       renderChatList();
       if (els.chatDetail.classList.contains("active") && getCurrentRoleId() === role.id) renderChatDetail();
@@ -1267,15 +1278,31 @@ function renderMemoryEditList() {
     els.memoryEditList.innerHTML = `<p class="memory-empty">还没有手动记忆。</p>`;
     return;
   }
+  const kindLabel = {
+    identity: "身份",
+    episode: "旧事",
+    relationship_state: "关系",
+    inner_feel: "TA感受",
+  };
   els.memoryEditList.innerHTML = memories
     .map(
-      (item) => `
+      (item) => {
+        const tags = [
+          memoryCategoryLabel(item.category),
+          kindLabel[item.kind] || "",
+          item.unresolved ? "挂着" : "",
+          item.archived ? "淡出" : "",
+          `重要度${item.importance ?? 3}`,
+          `情绪${item.emotionWeight ?? 3}`,
+        ].filter(Boolean);
+        return `
         <article class="memory-edit-item" data-memory-id="${item.id}">
-          <p class="memory-meta">${memoryCategoryLabel(item.category)} · 重要度${item.importance ?? 3} · 情绪${item.emotionWeight ?? 3}</p>
+          <p class="memory-meta">${tags.join(" · ")}</p>
           <textarea rows="3">${escapeHTML(item.content)}</textarea>
           <button type="button">删除</button>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -2338,17 +2365,19 @@ async function appendModelReply({
   try {
     const replyGroupId = createId("reply");
     const replyToMessageId = [...recentMessages].reverse().find((msg) => msg.sender === "user")?.id || "";
+    const contextMemories = selectContextMemories(getMemories(roleId), userText, recentMessages);
     const reply = await generateChatReply({
       role,
       settings,
       mode,
-      memories: selectRelevantMemories(getMemories(roleId), userText, recentMessages),
+      memories: contextMemories,
       recentMessages,
       recalledMessages,
       recalledRange,
       userText,
       userEventType,
     });
+    touchMemories(roleId, contextMemories.map((memory) => memory.id));
     recallStatus?.remove();
     typing.remove();
     for (let index = 0; index < reply.messages.length; index += 1) {
@@ -2374,6 +2403,14 @@ async function appendModelReply({
     }
     if (settings.allowMemory && reply.shouldRemember && reply.memoryCandidate) {
       rememberText(roleId, reply.memoryCandidate, 4, 4, { source: "chat", confidence: 0.72 });
+    }
+    if (settings.allowMemory && reply.feelingMemoryCandidate) {
+      rememberText(roleId, reply.feelingMemoryCandidate, 4, 4, {
+        source: "role_feel",
+        kind: "inner_feel",
+        category: "relationship",
+        confidence: 0.72,
+      });
     }
     renderChatList();
     return true;

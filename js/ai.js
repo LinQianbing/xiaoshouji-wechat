@@ -1,4 +1,4 @@
-import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=8";
+import { buildChatPrompt, buildMemoryPrompt, buildMomentPrompt, buildMomentReactionPrompt } from "./prompt.js?v=9";
 
 const REQUEST_TIMEOUT_MS = 60000;
 const CACHE_STATS_KEY = "xiaoshouji.cacheStats.v1";
@@ -183,6 +183,7 @@ export async function generateChatReply(payload) {
     shouldPat: Boolean(parsed.shouldPat),
     shouldRemember: Boolean(parsed.shouldRemember),
     memoryCandidate: parsed.memoryCandidate || "",
+    feelingMemoryCandidate: parsed.feelingMemoryCandidate || "",
   };
 }
 
@@ -203,6 +204,7 @@ export async function generateMomentReaction(payload) {
     comment: String(parsed.comment || "").trim().slice(0, 80),
     message: String(parsed.message || "").trim().slice(0, 140),
     memoryCandidate: String(parsed.memoryCandidate || "").trim().slice(0, 140),
+    feelingMemoryCandidate: String(parsed.feelingMemoryCandidate || "").trim().slice(0, 140),
   };
 }
 

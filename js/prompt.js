@@ -47,12 +47,22 @@ function modeRule(mode) {
 
 function memoryText(memories = []) {
   if (!memories.length) return "暂无长期记忆。你不能假装一开始就很了解用户，要通过聊天慢慢了解。";
+  const kindLabels = {
+    identity: "身份/偏好",
+    episode: "发生过的事",
+    relationship_state: "关系状态",
+    inner_feel: "TA的感受",
+  };
   return memories
     .slice(0, 10)
     .map((item, index) => {
       const category = item.category && item.category !== "other" ? `，分类${item.category}` : "";
       const relevance = item.relevance ? `，相关度${item.relevance.toFixed(2)}` : "";
-      return `${index + 1}. ${item.content}（重要度${item.importance ?? 3}，情绪权重${item.emotionWeight ?? 3}${category}${relevance}）`;
+      const kind = item.kind ? `，${kindLabels[item.kind] || item.kind}` : "";
+      const status = item.unresolved ? "，还没完全放下/还没后续" : item.archived ? "，已淡出日常" : "";
+      const feeling = item.valence || item.arousal ? `，情绪${Number(item.valence || 0).toFixed(1)}/${Number(item.arousal || 0).toFixed(1)}` : "";
+      const surfacing = item.surfacingReason ? `，浮现原因：${item.surfacingReason}` : "";
+      return `${index + 1}. ${item.content}（重要度${item.importance ?? 3}，情绪权重${item.emotionWeight ?? 3}${kind}${category}${status}${feeling}${relevance}${surfacing}）`;
     })
     .join("\n");
 }
@@ -110,6 +120,9 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "如果【查到的旧聊天记录】里有内容，你可以像翻到聊天记录一样自然提到原话和大概时间；如果没查到，不要假装记得。",
     "旧聊天记录只用于回答用户问的旧事，不要把它机械复述成清单，除非用户明确要求列出来。",
     "长期记忆只在和当前用户消息或当前气氛直接相关时自然使用；除非用户当前消息直接相关，否则不要主动提奶茶、歌曲、学习奖励、喝水、睡觉等旧记忆。",
+    "长期记忆里如果标着“还没完全放下/还没后续”，说明这件事像真人心里挂着的旧事；只有气氛合适时才自然提一句，不要机械翻旧账。",
+    "长期记忆里如果标着“TA的感受”，那是你这个联系人对你们互动留下的感觉；它只影响语气和亲疏，不要直接说“我的记忆里写着”。",
+    "如果这次对话让你自己产生了明显的在意、别扭、担心、安心、吃醋或想靠近，可以写入 feelingMemoryCandidate；没有就留空。",
     "如果【聊天状态】显示你被用户拉黑，你知道这件事，但仍然可以发消息；可以表现出着急、委屈、试探或想解释，不要假装什么都没发生。",
     "如果最近聊天里出现拍一拍动作，你能知道是谁拍了谁；你可以把 shouldPat 设为 true 主动拍一拍用户，但不要频繁使用。",
     "pat 类型消息只能作为动作事件理解，不要把“拍了拍……”当作普通聊天文本写进 messages，也不要复述拍一拍的完整内容。",
@@ -119,7 +132,7 @@ export function buildChatPrompt({ role, settings, mode, memories, recentMessages
     "后续上下文会给出当前模式和话痨强度；必须按那里的规则控制长度和状态。",
     "可以参考当前时间，但别机械报时，也别套早安/吃饭/早点睡模板。",
     "输出必须是合法 JSON，不要在 JSON 外输出任何解释。",
-    "JSON 格式：{\"messages\":[\"第一条短消息\",\"第二条短消息\"],\"mood\":\"normal\",\"shouldPat\":false,\"shouldRemember\":false,\"memoryCandidate\":\"\"}",
+    "JSON 格式：{\"messages\":[\"第一条短消息\",\"第二条短消息\"],\"mood\":\"normal\",\"shouldPat\":false,\"shouldRemember\":false,\"memoryCandidate\":\"\",\"feelingMemoryCandidate\":\"\"}",
     "messages 必须是字符串数组；每条是一条微信气泡，不能把所有内容塞进一条超长气泡。",
   ].join("\n");
 
@@ -210,7 +223,8 @@ export function buildMomentReactionPrompt({ role, settings, moment, memories = [
         "私聊消息要像这个联系人真的点进微信来找用户说话，可以比评论更具体一点，但仍然是一条短微信气泡。",
         "如果用户在朋友圈里提醒了你看，可以表现出你知道自己被点名了，但不要机械说“我被提醒了”。",
         "不要输出解释。只输出合法 JSON。",
-        "JSON 格式：{\"comment\":\"朋友圈评论\",\"message\":\"私聊消息\",\"memoryCandidate\":\"值得记住的事实，没有就空字符串\"}",
+        "如果这条朋友圈让你这个联系人对用户有明显的在意、担心、别扭、安心或靠近感，可以写入 feelingMemoryCandidate；没有就空字符串。",
+        "JSON 格式：{\"comment\":\"朋友圈评论\",\"message\":\"私聊消息\",\"memoryCandidate\":\"值得记住的事实，没有就空字符串\",\"feelingMemoryCandidate\":\"TA自己的感受记忆，没有就空字符串\"}",
       ].join("\n"),
     },
     {
@@ -255,7 +269,10 @@ export function buildMemoryPrompt({ role, recentMessages, existing = [] }) {
         "普通日常只保留模糊印象。",
         "如果新内容和已有记忆重复，要输出合并后的更准确版本，不要重复新增。",
         "分类只能用 profile、preference、relationship、event、promise、boundary、emotion、habit、other。",
-        "输出 JSON：{\"memories\":[{\"content\":\"简短记忆\",\"category\":\"preference\",\"importance\":3,\"emotionWeight\":3,\"confidence\":0.8}]}",
+        "kind 只能用 identity、episode、relationship_state、inner_feel。身份偏好用 identity；发生过的具体事用 episode；关系变化用 relationship_state；角色自己的感受用 inner_feel。",
+        "valence 表示情绪正负，-1 很负面，0 中性，1 很正面；arousal 表示情绪强度，0 平静，1 很强烈。",
+        "unresolved 表示这件事还悬着、还没后续、之后可能会被自然想起。",
+        "输出 JSON：{\"memories\":[{\"content\":\"简短记忆\",\"category\":\"preference\",\"kind\":\"identity\",\"importance\":3,\"emotionWeight\":3,\"valence\":0,\"arousal\":0.4,\"unresolved\":false,\"confidence\":0.8}]}",
         "如果没有值得记住的内容，memories 输出空数组。",
       ].join("\n"),
     },
