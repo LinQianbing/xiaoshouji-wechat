@@ -370,7 +370,7 @@
         });
         window.addEventListener("load", () => {
           navigator.serviceWorker
-            .register("service-worker.js")
+            .register("service-worker-v53.js")
             .then((registration) => {
               const activateUpdate = () => {
                 const worker = registration.waiting || registration.installing;
