@@ -44,6 +44,8 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setTextZoom(100);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
 
