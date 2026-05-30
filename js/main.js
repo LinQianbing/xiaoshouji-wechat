@@ -2781,11 +2781,18 @@ async function handleFetchModels() {
 }
 
 function downloadJSON() {
-  const blob = new Blob([JSON.stringify(exportAllData(), null, 2)], { type: "application/json" });
+  const fileName = `xiaoshouji-data-${Date.now()}.json`;
+  const content = JSON.stringify(exportAllData(), null, 2);
+  if (window.XiaoshoujiAndroid?.saveTextFile) {
+    window.XiaoshoujiAndroid.saveTextFile(fileName, content);
+    toast("正在导出到下载目录");
+    return;
+  }
+  const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `xiaoshouji-data-${Date.now()}.json`;
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
 }

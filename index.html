@@ -274,8 +274,9 @@
 
             <details class="settings-group settings-panel about-card">
               <summary>关于小手机</summary>
+              <a class="plain-row" href="downloads/xiaoshouji-android-v1.0.0.apk" download>下载 Android 安装包</a>
               <button class="plain-row" id="installPwaBtn" type="button">安装到桌面</button>
-              <p>这是一个本地网页 App。联系人、聊天、朋友圈和记忆都保存在浏览器 localStorage 里，不上传用户数据。</p>
+              <p>联系人、聊天、朋友圈和记忆都保存在本机，不上传用户数据。Android 安装包的数据与浏览器版相互独立，首次使用前请先导出旧数据，再在安装包中导入。</p>
             </details>
           </div>
         </section>
@@ -358,7 +359,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=44"></script>
+    <script type="module" src="js/main.js?v=45"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;
