@@ -36,6 +36,14 @@ function modelsEndpoint(apiBase) {
   return chatEndpoint(apiBase).replace(/\/chat\/completions$/, "/models");
 }
 
+function isOfficialDeepSeekEndpoint(endpoint) {
+  try {
+    return new URL(endpoint).hostname.toLowerCase() === "api.deepseek.com";
+  } catch {
+    return false;
+  }
+}
+
 function readCacheStats() {
   try {
     return JSON.parse(localStorage.getItem(CACHE_STATS_KEY) || "{}");
@@ -90,18 +98,21 @@ async function fetchWithReadableError(url, options) {
 async function callChatCompletions(settings, messages, temperature = 0.85) {
   if (!isApiReady(settings)) throw new ApiNotConfiguredError();
   const endpoint = chatEndpoint(settings.apiBase);
+  const body = {
+    model: settings.model || "gpt-4o-mini",
+    messages,
+    temperature,
+    response_format: { type: "json_object" },
+    max_tokens: 600,
+  };
+  if (isOfficialDeepSeekEndpoint(endpoint)) body.thinking = { type: "disabled" };
   const res = await fetchWithReadableError(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${settings.apiKey}`,
     },
-    body: JSON.stringify({
-      model: settings.model || "gpt-4o-mini",
-      messages,
-      temperature,
-      response_format: { type: "json_object" },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

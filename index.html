@@ -362,7 +362,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=45"></script>
+    <script type="module" src="js/main.js?v=46"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;
@@ -373,7 +373,7 @@
         });
         window.addEventListener("load", () => {
           navigator.serviceWorker
-            .register("service-worker-v54.js")
+            .register("service-worker-v55.js")
             .then((registration) => {
               const activateUpdate = () => {
                 const worker = registration.waiting || registration.installing;

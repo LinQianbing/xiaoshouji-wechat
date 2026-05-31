@@ -30,7 +30,7 @@ import {
   updateChat,
 } from "./storage.js?v=4";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
-import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=15";
+import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=16";
 import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=6";
 import {
   USER_MOMENTS_ID,
@@ -41,7 +41,7 @@ import {
   getAllMoments,
   likeMoment,
   updateUserMoment,
-} from "./moments.js?v=4";
+} from "./moments.js?v=5";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -2359,7 +2359,7 @@ async function appendModelReply({
 }) {
   if (recallTriggered || recalledMessages.length) {
     recallStatus ||= appendRecallStatus(recalledRange);
-    await delay(900);
+    await delay(250);
   }
   const typing = appendTyping();
   try {
@@ -2382,7 +2382,7 @@ async function appendModelReply({
     typing.remove();
     for (let index = 0; index < reply.messages.length; index += 1) {
       const message = reply.messages[index];
-      if (index > 0) await delay(Math.min(950, 320 + String(message).length * 18 + index * 140));
+      if (index > 0) await delay(Math.min(520, 180 + String(message).length * 10 + index * 80));
       addChat(roleId, {
         sender: "role",
         content: String(message).trim(),
