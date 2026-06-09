@@ -295,7 +295,7 @@
 
     <!-- 联系人编辑弹层 -->
     <dialog class="sheet-dialog" id="roleDialog">
-      <form method="dialog" class="role-sheet" id="roleForm">
+      <form method="dialog" class="role-sheet" id="roleForm" novalidate>
         <header>
           <button value="cancel" type="button" id="closeRoleDialogBtn">取消</button>
           <strong id="roleDialogTitle">添加联系人</strong>
@@ -362,7 +362,7 @@
 
     <div class="toast" id="toast"></div>
 
-    <script type="module" src="js/main.js?v=46"></script>
+    <script type="module" src="js/main.js?v=47"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;
@@ -373,7 +373,7 @@
         });
         window.addEventListener("load", () => {
           navigator.serviceWorker
-            .register("service-worker-v55.js")
+            .register("service-worker-v56.js")
             .then((registration) => {
               const activateUpdate = () => {
                 const worker = registration.waiting || registration.installing;

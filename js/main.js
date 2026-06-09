@@ -28,7 +28,7 @@ import {
   setMemories,
   setUnread,
   updateChat,
-} from "./storage.js?v=4";
+} from "./storage.js?v=5";
 import { formatChatTime, formatClock, formatMomentTime, getAwayLabel, getTimeContext, nowISO } from "./time.js";
 import { ApiNotConfiguredError, fetchAvailableModels, generateChatReply, generateMomentReaction, isApiReady } from "./ai.js?v=16";
 import { memoryCategoryLabel, rememberText, selectContextMemories, shouldSaveFeelingMemory, summarizeRecentChatToMemory, touchMemories } from "./memory.js?v=6";
@@ -41,7 +41,7 @@ import {
   getAllMoments,
   likeMoment,
   updateUserMoment,
-} from "./moments.js?v=5";
+} from "./moments.js?v=6";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -339,6 +339,22 @@ function readFileAsDataURL(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function readCompressedAvatar(file) {
+  const source = await readFileAsDataURL(file);
+  const image = await loadCanvasImage(source);
+  if (!image) return source;
+
+  const maxDimension = 512;
+  const scale = Math.min(1, maxDimension / image.naturalWidth, maxDimension / image.naturalHeight);
+  if (scale === 1 && source.length < 500_000) return source;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/webp", 0.82);
 }
 
 function loadCanvasImage(src) {
@@ -2673,20 +2689,40 @@ function closeDialog(dialog) {
 
 function saveRoleFromForm(event) {
   event.preventDefault();
+  const name = els.roleNameInput.value.trim();
+  if (!name) {
+    toast("请先填写联系人名字");
+    els.roleNameInput.focus();
+    return;
+  }
+
   const existing = state.editingRoleId ? getRole(state.editingRoleId) : null;
-  const role = saveRole({
-    id: existing?.id || createId("role"),
-    name: els.roleNameInput.value,
-    gender: els.roleGenderInput.value,
-    avatar: els.roleAvatarPreview.src || DEFAULT_ROLE_AVATAR,
-    description: els.roleDescInput.value,
-    patSuffix: els.rolePatSuffixInput.value.trim(),
-    isPinned: existing?.isPinned,
-    isBlocked: existing?.isBlocked,
-    chatBackground: existing?.chatBackground,
-    createdAt: existing?.createdAt,
-  });
-  setCurrentRoleId(role.id);
+  let role;
+  try {
+    role = saveRole({
+      id: existing?.id || createId("role"),
+      name,
+      gender: els.roleGenderInput.value,
+      avatar: els.roleAvatarPreview.src || DEFAULT_ROLE_AVATAR,
+      description: els.roleDescInput.value,
+      patSuffix: els.rolePatSuffixInput.value.trim(),
+      isPinned: existing?.isPinned,
+      isBlocked: existing?.isBlocked,
+      chatBackground: existing?.chatBackground,
+      createdAt: existing?.createdAt,
+    });
+  } catch (error) {
+    console.error("保存联系人失败", error);
+    const isStorageFull = error?.name === "QuotaExceededError" || error?.code === 22;
+    toast(isStorageFull ? "本机存储空间不足，请先导出备份并清理图片或聊天记录" : "联系人保存失败，请重试");
+    return;
+  }
+  try {
+    setCurrentRoleId(role.id);
+  } catch (error) {
+    console.warn("联系人已保存，但无法更新当前联系人", error);
+  }
+
   closeDialog(els.roleDialog);
   const shouldOpenChat = state.startChatAfterSave && !existing;
   state.startChatAfterSave = false;
@@ -2972,7 +3008,13 @@ function bindEvents() {
   });
   els.roleAvatarInput.addEventListener("change", async () => {
     const file = els.roleAvatarInput.files?.[0];
-    if (file) els.roleAvatarPreview.src = await readFileAsDataURL(file);
+    if (!file) return;
+    try {
+      els.roleAvatarPreview.src = await readCompressedAvatar(file);
+    } catch (error) {
+      console.error("读取联系人头像失败", error);
+      toast("头像读取失败，请换一张图片重试");
+    }
   });
   els.deleteRoleBtn.addEventListener("click", () => {
     if (!state.editingRoleId) return;

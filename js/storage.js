@@ -117,7 +117,6 @@ export function saveRole(role) {
   if (existingIndex >= 0) roles[existingIndex] = normalized;
   else roles.push(normalized);
   write(KEYS.roles, roles);
-  ensureRoleBuckets(normalized.id);
   return normalized;
 }
 
@@ -142,7 +141,6 @@ export function getCurrentRoleId() {
 
 export function setCurrentRoleId(roleId) {
   write(KEYS.currentRoleId, roleId);
-  ensureRoleBuckets(roleId);
 }
 
 export function getCurrentMode() {
@@ -151,14 +149,6 @@ export function getCurrentMode() {
 
 export function setCurrentMode(mode) {
   write(KEYS.currentMode, mode === "offline" ? "offline" : "online");
-}
-
-function ensureRoleBuckets(roleId) {
-  for (const key of [KEYS.chatRecords, KEYS.memories, KEYS.moments]) {
-    const data = read(key, {});
-    if (!Array.isArray(data[roleId])) data[roleId] = [];
-    write(key, data);
-  }
 }
 
 export function getChats(roleId = getCurrentRoleId()) {

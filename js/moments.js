@@ -10,7 +10,7 @@ import {
   getMoments,
   setMoments,
   updateMoment,
-} from "./storage.js?v=4";
+} from "./storage.js?v=5";
 import { generateMoment } from "./ai.js?v=16";
 
 export const USER_MOMENTS_ID = "__user__";
